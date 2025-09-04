@@ -14,6 +14,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::middleware('can:isAdmin')->group(function () {
         Route::apiResource('/karani', KaraniController::class);
+        Route::post('karani/{id}/reset-password', [KaraniController::class, 'resetPassword']);
         Route::apiResource('/kota', KotaController::class);
     });
 
