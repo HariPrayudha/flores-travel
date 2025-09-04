@@ -35,14 +35,16 @@ class KaraniController extends Controller
             $request->validate([
                 'name'     => 'required|string|max:255',
                 'username' => 'required|string|unique:users,username',
-                'password' => 'required|string|min:6'
+                'password' => 'nullable|string|min:6',
             ]);
+
+            $passwordPlain = $request->password ?? $request->username;
 
             $karani = User::create([
                 'name'     => $request->name,
                 'username' => $request->username,
-                'password' => Hash::make($request->password),
-                'role'     => 'karani'
+                'password' => Hash::make($passwordPlain),
+                'role'     => 'karani',
             ]);
 
             return response()->json([
@@ -92,13 +94,20 @@ class KaraniController extends Controller
         try {
             $request->validate([
                 'name'     => 'required|string|max:255',
-                'username'    => 'required|string|unique:users,username,' . $id,
-                'password' => 'required|string|min:6'
+                'username' => 'required|string|unique:users,username,' . $id,
+                'password' => 'nullable|string|min:6',
             ]);
 
             $karani = User::where('role', 'karani')->findOrFail($id);
 
-            $karani->update($request->only(['name', 'username']));
+            $karani->name = $request->name;
+            $karani->username = $request->username;
+
+            if ($request->filled('password')) {
+                $karani->password = Hash::make($request->password);
+            }
+
+            $karani->save();
 
             return response()->json([
                 'success' => true,
@@ -110,6 +119,12 @@ class KaraniController extends Controller
                 'message' => 'Karani not found',
                 'errors'  => $e->getMessage(),
             ], 404);
+        } catch (ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+                'errors'  => $e->errors(),
+            ], 422);
         } catch (Exception $e) {
             return response()->json([
                 'success' => false,
