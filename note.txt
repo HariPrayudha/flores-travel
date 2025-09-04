@@ -1,0 +1,18 @@
+php artisan make:api
+
+
+- Tombol navigasi bawahnya itu ketimpa sama tombol navigasi bawaan android
+- jenis barang diganti jadi deskripsi barang
+- alamat penerima hapus
+
+
+besok
+- update dulu data barang, lalu tunggu konfirmasi admin
+- destroy masih belum bekerja
+- penerimaan barang
+- statistik
+
+
+statistik
+profile
+update profile
