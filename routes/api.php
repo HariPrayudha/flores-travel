@@ -20,6 +20,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::apiResource('/kota', KotaController::class);
     });
 
+    Route::get('/kota', [KotaController::class, 'index']);
     Route::apiResource('/barang', BarangController::class);
     Route::apiResource('/update-barang', RequestUpdateBarangController::class);
 
