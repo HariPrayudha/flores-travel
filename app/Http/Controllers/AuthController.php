@@ -66,6 +66,38 @@ class AuthController extends Controller
         }
     }
 
+    public function updateProfile(Request $request)
+    {
+        try {
+            $user = $request->user();
+
+            $validated = $request->validate([
+                'name' => ['required', 'string', 'max:255'],
+                'username' => ['required', 'string', 'max:255', 'unique:users,username,' . $user->id],
+            ]);
+
+            $user->name = $validated['name'];
+            $user->username = $validated['username'];
+            $user->save();
+
+            return response()->json([
+                'success' => true,
+                'user' => $user,
+            ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validasi gagal',
+                'errors' => $e->errors(),
+            ], 422);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal memperbarui profil',
+            ], 500);
+        }
+    }
+
     public function changePassword(Request $request)
     {
         $user = $request->user();

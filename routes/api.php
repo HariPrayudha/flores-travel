@@ -10,6 +10,7 @@ use App\Http\Controllers\RequestUpdateBarangController;
 Route::post('/login', [AuthController::class, 'login'])->name('login');
 
 Route::middleware('auth:sanctum')->group(function () {
+    Route::put('auth/profile', [AuthController::class, 'updateProfile']);
     Route::post('auth/change-password', [AuthController::class, 'changePassword']);
     Route::post('/logout', [AuthController::class, 'logout']);
 
