@@ -182,11 +182,12 @@ class BarangController extends Controller
                 'status_barang'    => 'required|string|in:Diterima,Belum Diterima',
                 'foto_barang.*'    => 'sometimes|image|mimes:jpg,jpeg,png|max:2048',
                 'foto_penerima'    => 'sometimes|image|mimes:jpg,jpeg,png|max:2048',
+                'delete_foto_ids'   => ['nullable', 'array'],
+                'delete_foto_ids.*' => ['integer', 'exists:foto_barangs,id'],
             ]);
 
             DB::beginTransaction();
 
-            /** @var \App\Models\Barang $barang */
             $barang = Barang::with('fotoBarang')->findOrFail($id);
 
             $barang->update([
@@ -202,9 +203,21 @@ class BarangController extends Controller
                 'status_barang'    => $validated['status_barang'],
             ]);
 
+            $idsToDelete = $request->input('delete_foto_ids', []);
+            if (!empty($idsToDelete)) {
+                $fotos = FotoBarang::where('barang_id', $barang->id)
+                    ->whereIn('id', $idsToDelete)
+                    ->get();
+
+                foreach ($fotos as $f) {
+                    Storage::disk('public')->delete('foto_barang/' . $f->nama_file);
+                    $f->delete();
+                }
+            }
+
             if ($request->hasFile('foto_barang')) {
                 foreach ($request->file('foto_barang') as $file) {
-                    $filename = time() . '_' . uniqid() . '_' . $file->getClientOriginalName();
+                    $filename = time() . '_' . uniqid() . '.' . $file->getClientOriginalExtension();
                     Storage::disk('public')->putFileAs('foto_barang', $file, $filename);
 
                     FotoBarang::create([
@@ -218,10 +231,10 @@ class BarangController extends Controller
                 if ($barang->foto_penerima) {
                     Storage::disk('public')->delete('foto_barang/' . $barang->foto_penerima);
                 }
-                $foto = $request->file('foto_penerima');
-                $fotoFilename = 'foto_' . time() . '_' . uniqid() . '.' . $foto->getClientOriginalExtension();
-                Storage::disk('public')->putFileAs('foto_barang', $foto, $fotoFilename);
-                $barang->update(['foto_penerima' => $fotoFilename]);
+                $fp = $request->file('foto_penerima');
+                $fpName = 'foto_' . time() . '_' . uniqid() . '.' . $fp->getClientOriginalExtension();
+                Storage::disk('public')->putFileAs('foto_barang', $fp, $fpName);
+                $barang->update(['foto_penerima' => $fpName]);
             }
 
             DB::commit();
