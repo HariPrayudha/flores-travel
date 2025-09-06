@@ -180,14 +180,13 @@ class BarangController extends Controller
                 'harga_awal'       => 'required|numeric|min:0',
                 'status_bayar'     => 'required|string|in:Lunas,Belum Bayar,Transfer',
                 'status_barang'    => 'required|string|in:Diterima,Belum Diterima',
-
-                'foto_barang.*'    => 'nullable|image|mimes:jpg,jpeg,png|max:2048',
-                'foto_penerima'    => 'nullable|image|mimes:jpg,jpeg,png|max:2048',
-                'ttd_penerima'     => 'nullable|image|mimes:jpg,jpeg,png|max:2048',
+                'foto_barang.*'    => 'sometimes|image|mimes:jpg,jpeg,png|max:2048',
+                'foto_penerima'    => 'sometimes|image|mimes:jpg,jpeg,png|max:2048',
             ]);
 
             DB::beginTransaction();
 
+            /** @var \App\Models\Barang $barang */
             $barang = Barang::with('fotoBarang')->findOrFail($id);
 
             $barang->update([
@@ -204,13 +203,6 @@ class BarangController extends Controller
             ]);
 
             if ($request->hasFile('foto_barang')) {
-                foreach ($barang->fotoBarang as $foto) {
-                    if ($foto->nama_file) {
-                        Storage::disk('public')->delete('foto_barang/' . $foto->nama_file);
-                    }
-                    $foto->delete();
-                }
-
                 foreach ($request->file('foto_barang') as $file) {
                     $filename = time() . '_' . uniqid() . '_' . $file->getClientOriginalName();
                     Storage::disk('public')->putFileAs('foto_barang', $file, $filename);
@@ -226,22 +218,10 @@ class BarangController extends Controller
                 if ($barang->foto_penerima) {
                     Storage::disk('public')->delete('foto_barang/' . $barang->foto_penerima);
                 }
-                $f = $request->file('foto_penerima');
-                $fn = 'foto_' . time() . '_' . uniqid() . '.' . $f->getClientOriginalExtension();
-                Storage::disk('public')->putFileAs('foto_barang', $f, $fn);
-                $barang->foto_penerima = $fn;
-                $barang->save();
-            }
-
-            if ($request->hasFile('ttd_penerima')) {
-                if ($barang->ttd_penerima) {
-                    Storage::disk('public')->delete('foto_barang/' . $barang->ttd_penerima);
-                }
-                $f = $request->file('ttd_penerima');
-                $fn = 'ttd_' . time() . '_' . uniqid() . '.' . $f->getClientOriginalExtension();
-                Storage::disk('public')->putFileAs('foto_barang', $f, $fn);
-                $barang->ttd_penerima = $fn;
-                $barang->save();
+                $foto = $request->file('foto_penerima');
+                $fotoFilename = 'foto_' . time() . '_' . uniqid() . '.' . $foto->getClientOriginalExtension();
+                Storage::disk('public')->putFileAs('foto_barang', $foto, $fotoFilename);
+                $barang->update(['foto_penerima' => $fotoFilename]);
             }
 
             DB::commit();
@@ -251,7 +231,7 @@ class BarangController extends Controller
                 $f->url = Storage::url('foto_barang/' . $f->nama_file);
             }
             $barang->foto_penerima_url = $barang->foto_penerima ? Storage::url('foto_barang/' . $barang->foto_penerima) : null;
-            $barang->ttd_penerima_url  = $barang->ttd_penerima  ? Storage::url('foto_barang/' . $barang->ttd_penerima)  : null;
+            $barang->ttd_penerima_url  = $barang->ttd_penerima ? Storage::url('foto_barang/' . $barang->ttd_penerima) : null;
 
             return response()->json([
                 'success' => true,
@@ -265,13 +245,7 @@ class BarangController extends Controller
                 'message' => 'Validasi gagal.',
                 'errors'  => $e->errors()
             ], 422);
-        } catch (ModelNotFoundException $e) {
-            DB::rollBack();
-            return response()->json([
-                'success' => false,
-                'message' => 'Barang not found',
-            ], 404);
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             DB::rollBack();
             return response()->json([
                 'success' => false,
