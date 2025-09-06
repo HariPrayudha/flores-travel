@@ -7,6 +7,9 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreRequestUpdateBarangRequest;
 use App\Http\Requests\UpdateRequestUpdateBarangRequest;
 use App\Models\Barang;
+use App\Models\User;
+use App\Notifications\RequestUpdateBarangCreated;
+use Illuminate\Support\Facades\Notification; 
 use Exception;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
@@ -35,7 +38,6 @@ class RequestUpdateBarangController extends Controller
     {
         try {
             $validated = $request->validate([
-                'user_id'          => 'required|exists:users,id',
                 'barang_id'        => 'required|exists:barangs,id',
                 'kota_asal'        => 'required|exists:kotas,id',
                 'kota_tujuan'      => 'required|exists:kotas,id',
@@ -45,28 +47,27 @@ class RequestUpdateBarangController extends Controller
                 'nama_penerima'    => 'required|string|max:255',
                 'hp_penerima'      => 'required|string|max:20',
                 'harga_awal'       => 'required|numeric|min:0',
-                'status_bayar' => 'required|string|in:Lunas,Belum Bayar,Transfer',
+                'status_bayar'     => 'required|string|in:Lunas,Belum Bayar,Transfer',
                 'alasan'           => 'nullable|string',
             ]);
 
-            $barang = Barang::findOrFail($validated['barang_id']);
-            if ($barang->user_id != $validated['user_id']) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Anda tidak memiliki akses ke barang ini.'
-                ], 403);
+            $user = $request->user();
+            if (!$user) {
+                return response()->json(['success' => false, 'message' => 'Unauthenticated'], 401);
             }
 
-            if ($barang->status_barang == "Diterima") {
+            $barang = Barang::findOrFail($validated['barang_id']);
+
+            if ($barang->status_barang === "Diterima") {
                 return response()->json([
                     'success' => false,
                     'message' => 'Barang tidak bisa diupdate lagi.'
                 ], 403);
             }
 
-            $requestUpdate = RequestUpdateBarang::create([
-                'user_id' => $validated['user_id'],
-                'barang_id' => $validated['barang_id'],
+            $reqUpdate = RequestUpdateBarang::create([
+                'user_id'          => $user->id,            // dari token
+                'barang_id'        => $barang->id,
                 'kota_asal'        => $validated['kota_asal'],
                 'kota_tujuan'      => $validated['kota_tujuan'],
                 'deskripsi_barang' => $validated['deskripsi_barang'],
@@ -76,12 +77,15 @@ class RequestUpdateBarangController extends Controller
                 'hp_penerima'      => $validated['hp_penerima'],
                 'harga_awal'       => $validated['harga_awal'],
                 'status_bayar'     => $validated['status_bayar'],
-                'alasan' => $validated['alasan']
+                'alasan'           => $validated['alasan'] ?? null,
             ]);
+
+            $admins = User::where('role', 'admin')->get();
+            Notification::send($admins, new RequestUpdateBarangCreated($reqUpdate));
 
             return response()->json([
                 'success' => true,
-                'data'    => $requestUpdate->load(['barang', 'user'])
+                'data'    => $reqUpdate->load(['barang', 'user'])
             ], 201);
         } catch (ValidationException $e) {
             return response()->json([
@@ -89,7 +93,7 @@ class RequestUpdateBarangController extends Controller
                 'message' => $e->getMessage(),
                 'errors'  => $e->errors()
             ], 422);
-        } catch (Exception $e) {
+        } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to request update barang',
@@ -130,7 +134,7 @@ class RequestUpdateBarangController extends Controller
 
         try {
             $updateBarang = RequestUpdateBarang::where('id', $r->id)->first();
-            if($r->status == 'Diterima'){
+            if ($r->status == 'Diterima') {
                 $barang = Barang::where('id', $updateBarang->barang_id)->first();
 
                 $barang->kota_asal = $updateBarang->kota_asal;
@@ -144,7 +148,7 @@ class RequestUpdateBarangController extends Controller
                 $barang->status_bayar = $updateBarang->status_bayar;
 
                 $updateBarang->status_update = "Diterima";
-            } elseif($r->status == 'Diterima'){
+            } elseif ($r->status == 'Diterima') {
                 $updateBarang->status_update = "Ditolak";
             }
 
@@ -189,13 +193,11 @@ class RequestUpdateBarangController extends Controller
                 'success' => true,
                 'message' => 'Request Update Barang berhasil dihapus.'
             ], 200);
-
         } catch (ModelNotFoundException $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Request Update Barang tidak ditemukan.'
             ], 404);
-
         } catch (Exception $e) {
             return response()->json([
                 'success' => false,
@@ -204,5 +206,4 @@ class RequestUpdateBarangController extends Controller
             ], 500);
         }
     }
-
 }
