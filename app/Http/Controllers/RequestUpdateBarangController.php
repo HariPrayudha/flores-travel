@@ -58,12 +58,12 @@ class RequestUpdateBarangController extends Controller
 
             $barang = Barang::findOrFail($validated['barang_id']);
 
-            if ($barang->status_barang === "Diterima") {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Barang tidak bisa diupdate lagi.'
-                ], 403);
-            }
+            // if ($barang->status_barang === "Diterima") {
+            //     return response()->json([
+            //         'success' => false,
+            //         'message' => 'Barang tidak bisa diupdate lagi.'
+            //     ], 403);
+            // }
 
             $reqUpdate = RequestUpdateBarang::create([
                 'user_id'          => $user->id,            // dari token
