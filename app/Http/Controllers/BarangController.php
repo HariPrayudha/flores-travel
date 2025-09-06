@@ -180,7 +180,10 @@ class BarangController extends Controller
                 'harga_awal'       => 'required|numeric|min:0',
                 'status_bayar'     => 'required|string|in:Lunas,Belum Bayar,Transfer',
                 'status_barang'    => 'required|string|in:Diterima,Belum Diterima',
+
                 'foto_barang.*'    => 'nullable|image|mimes:jpg,jpeg,png|max:2048',
+                'foto_penerima'    => 'nullable|image|mimes:jpg,jpeg,png|max:2048',
+                'ttd_penerima'     => 'nullable|image|mimes:jpg,jpeg,png|max:2048',
             ]);
 
             DB::beginTransaction();
@@ -202,27 +205,58 @@ class BarangController extends Controller
 
             if ($request->hasFile('foto_barang')) {
                 foreach ($barang->fotoBarang as $foto) {
-                    Storage::delete('public/foto_barang/' . $foto->nama_file);
+                    if ($foto->nama_file) {
+                        Storage::disk('public')->delete('foto_barang/' . $foto->nama_file);
+                    }
                     $foto->delete();
                 }
 
                 foreach ($request->file('foto_barang') as $file) {
                     $filename = time() . '_' . uniqid() . '_' . $file->getClientOriginalName();
-                    $file->storeAs('public/foto_barang', $filename);
+                    Storage::disk('public')->putFileAs('foto_barang', $file, $filename);
 
                     FotoBarang::create([
                         'barang_id' => $barang->id,
-                        'nama_file' => $filename
+                        'nama_file' => $filename,
                     ]);
                 }
             }
 
+            if ($request->hasFile('foto_penerima')) {
+                if ($barang->foto_penerima) {
+                    Storage::disk('public')->delete('foto_barang/' . $barang->foto_penerima);
+                }
+                $f = $request->file('foto_penerima');
+                $fn = 'foto_' . time() . '_' . uniqid() . '.' . $f->getClientOriginalExtension();
+                Storage::disk('public')->putFileAs('foto_barang', $f, $fn);
+                $barang->foto_penerima = $fn;
+                $barang->save();
+            }
+
+            if ($request->hasFile('ttd_penerima')) {
+                if ($barang->ttd_penerima) {
+                    Storage::disk('public')->delete('foto_barang/' . $barang->ttd_penerima);
+                }
+                $f = $request->file('ttd_penerima');
+                $fn = 'ttd_' . time() . '_' . uniqid() . '.' . $f->getClientOriginalExtension();
+                Storage::disk('public')->putFileAs('foto_barang', $f, $fn);
+                $barang->ttd_penerima = $fn;
+                $barang->save();
+            }
+
             DB::commit();
+
+            $barang->load('fotoBarang');
+            foreach ($barang->fotoBarang as $f) {
+                $f->url = Storage::url('foto_barang/' . $f->nama_file);
+            }
+            $barang->foto_penerima_url = $barang->foto_penerima ? Storage::url('foto_barang/' . $barang->foto_penerima) : null;
+            $barang->ttd_penerima_url  = $barang->ttd_penerima  ? Storage::url('foto_barang/' . $barang->ttd_penerima)  : null;
 
             return response()->json([
                 'success' => true,
                 'message' => 'Data berhasil diupdate.',
-                'data'    => $barang->load('fotoBarang')
+                'data'    => $barang,
             ], 200);
         } catch (ValidationException $e) {
             DB::rollBack();
@@ -231,7 +265,13 @@ class BarangController extends Controller
                 'message' => 'Validasi gagal.',
                 'errors'  => $e->errors()
             ], 422);
-        } catch (Exception $e) {
+        } catch (ModelNotFoundException $e) {
+            DB::rollBack();
+            return response()->json([
+                'success' => false,
+                'message' => 'Barang not found',
+            ], 404);
+        } catch (\Exception $e) {
             DB::rollBack();
             return response()->json([
                 'success' => false,
