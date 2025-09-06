@@ -40,75 +40,82 @@ class BarangController extends Controller
     {
         try {
             $validated = $request->validate([
-                'user_id'          => 'required|exists:users,id',
-                'kota_asal'        => 'required|exists:kotas,id',
-                'kota_tujuan'      => 'required|exists:kotas,id',
-                'deskripsi_barang' => 'required|string',
-                'nama_pengirim'    => 'required|string|max:255',
-                'hp_pengirim'      => 'required|string|max:20',
-                'nama_penerima'    => 'required|string|max:255',
-                'hp_penerima'      => 'required|string|max:20',
-                'harga_awal'       => 'required|numeric|min:0',
-                'status_bayar' => 'required|string|in:Lunas,Belum Bayar,Transfer',
-                'status_barang' => 'required|string|in:Diterima,Belum Diterima',
-                'foto_barang.*'    => 'required|image|mimes:jpg,jpeg,png|max:2048',
-                'catatan_pengiriman'       => 'nullable|string',
+                'user_id'               => 'required|exists:users,id',
+                'kota_asal'             => 'required|exists:kotas,id',
+                'kota_tujuan'           => 'required|exists:kotas,id',
+                'deskripsi_barang'      => 'required|string',
+                'nama_pengirim'         => 'required|string|max:255',
+                'hp_pengirim'           => 'required|string|max:20',
+                'nama_penerima'         => 'required|string|max:255',
+                'hp_penerima'           => 'required|string|max:20',
+                'harga_awal'            => 'required|numeric|min:0',
+                'status_bayar'          => 'required|string|in:Lunas,Belum Bayar,Transfer',
+                'status_barang'         => 'required|string|in:Diterima,Belum Diterima',
+                'foto_barang.*'         => 'required|image|mimes:jpg,jpeg,png|max:2048',
+                'catatan_pengiriman'    => 'nullable|string',
             ]);
 
             DB::beginTransaction();
 
-            $kotaTujuan = Kota::where('id', $request->kota_tujuan)->pluck('nama')->first()[0];
+            $kotaTujuanFirstChar = Kota::where('id', $request->kota_tujuan)->value('nama');
+            $kotaTujuanFirstChar = $kotaTujuanFirstChar ? mb_substr($kotaTujuanFirstChar, 0, 1) : 'X';
+
             $tanggalToday = date('dmy');
 
-            $lastResi = Barang::where('kode_barang', 'like', $kotaTujuan . '-' . $tanggalToday . '-%')
+            $lastResi = Barang::where('kode_barang', 'like', $kotaTujuanFirstChar . '-' . $tanggalToday . '-%')
                 ->orderBy('kode_barang', 'desc')
-                ->pluck('kode_barang')
-                ->first();
+                ->value('kode_barang');
 
             $nextNumber = 1;
-
             if ($lastResi) {
                 $parts = explode('-', $lastResi);
-                $lastNumber = intval($parts[count($parts) - 1]);
+                $lastNumber = intval(end($parts));
                 $nextNumber = $lastNumber + 1;
             }
 
             $nextNumberFormatted = str_pad($nextNumber, 3, '0', STR_PAD_LEFT);
-            $resi = $kotaTujuan . '-' . $tanggalToday . '-' . $nextNumberFormatted;
+            $resi = $kotaTujuanFirstChar . '-' . $tanggalToday . '-' . $nextNumberFormatted;
 
             $barang = Barang::create([
-                'kode_barang'      => $resi,
-                'user_id'          => $validated['user_id'],
-                'kota_asal'        => $validated['kota_asal'],
-                'kota_tujuan'      => $validated['kota_tujuan'],
-                'deskripsi_barang' => $validated['deskripsi_barang'],
-                'nama_pengirim'    => $validated['nama_pengirim'],
-                'hp_pengirim'      => $validated['hp_pengirim'],
-                'nama_penerima'    => $validated['nama_penerima'],
-                'hp_penerima'      => $validated['hp_penerima'],
-                'harga_awal'       => $validated['harga_awal'],
-                'status_bayar'     => $validated['status_bayar'],
-                'status_barang'    => $validated['status_barang'],
-                'catatan_pengiriman' => $validated['catatan_pengiriman'],
+                'kode_barang'        => $resi,
+                'user_id'            => $validated['user_id'],
+                'kota_asal'          => $validated['kota_asal'],
+                'kota_tujuan'        => $validated['kota_tujuan'],
+                'deskripsi_barang'   => $validated['deskripsi_barang'],
+                'nama_pengirim'      => $validated['nama_pengirim'],
+                'hp_pengirim'        => $validated['hp_pengirim'],
+                'nama_penerima'      => $validated['nama_penerima'],
+                'hp_penerima'        => $validated['hp_penerima'],
+                'harga_awal'         => $validated['harga_awal'],
+                'status_bayar'       => $validated['status_bayar'],
+                'status_barang'      => $validated['status_barang'],
+                'catatan_pengiriman' => $validated['catatan_pengiriman'] ?? null,
             ]);
 
             if ($request->hasFile('foto_barang')) {
                 foreach ($request->file('foto_barang') as $file) {
                     $filename = time() . '_' . uniqid() . '_' . $file->getClientOriginalName();
-                    $file->storeAs('public/foto_barang', $filename);
+                    Storage::disk('public')->putFileAs('foto_barang', $file, $filename);
 
                     FotoBarang::create([
                         'barang_id' => $barang->id,
-                        'nama_file' => $filename
+                        'nama_file' => $filename,
                     ]);
                 }
             }
 
             DB::commit();
 
+            $barang->load('fotoBarang');
+            foreach ($barang->fotoBarang as $f) {
+                $f->url = Storage::url('foto_barang/' . $f->nama_file);
+            }
+            $barang->foto_penerima_url = $barang->foto_penerima ? Storage::url('foto_barang/' . $barang->foto_penerima) : null;
+            $barang->ttd_penerima_url  = $barang->ttd_penerima ? Storage::url('foto_barang/' . $barang->ttd_penerima) : null;
+
             return response()->json([
                 'success' => true,
-                'data'    => $barang->load('fotoBarang')
+                'data'    => $barang,
             ], 201);
         } catch (ValidationException $e) {
             DB::rollBack();
@@ -130,21 +137,31 @@ class BarangController extends Controller
     public function show($id)
     {
         try {
-            $barang = Barang::with(['user', 'fotoBarang'])->where('id', $id)->first();
+            $barang = Barang::with(['user', 'fotoBarang'])->findOrFail($id);
+
+            foreach ($barang->fotoBarang as $f) {
+                $f->url = Storage::url('foto_barang/' . $f->nama_file);
+            }
+            $barang->foto_penerima_url = $barang->foto_penerima
+                ? Storage::url('foto_barang/' . $barang->foto_penerima)
+                : null;
+            $barang->ttd_penerima_url = $barang->ttd_penerima
+                ? Storage::url('foto_barang/' . $barang->ttd_penerima)
+                : null;
 
             return response()->json([
                 'success' => true,
-                'data'    => $barang
+                'data'    => $barang,
             ]);
         } catch (ModelNotFoundException $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Barang not found'
+                'message' => 'Barang not found',
             ], 404);
         } catch (Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to fetch barang'
+                'message' => 'Failed to fetch barang',
             ], 500);
         }
     }
@@ -228,33 +245,33 @@ class BarangController extends Controller
     {
         try {
             $validated = $request->validate([
-                'ttd_penerima'  => 'required|image|mimes:jpg,jpeg,png|max:2048',
-                'foto_penerima' => 'required|image|mimes:jpg,jpeg,png|max:2048',
-                'harga_terbayar' => 'required|numeric|min:0',
-                'status_bayar' => 'required|string|in:Lunas,Belum Bayar,Transfer',
-                'catatan_penerimaan'       => 'nullable|string',
+                'ttd_penerima'        => 'required|image|mimes:jpg,jpeg,png|max:2048',
+                'foto_penerima'       => 'required|image|mimes:jpg,jpeg,png|max:2048',
+                'harga_terbayar'      => 'required|numeric|min:0',
+                'status_bayar'        => 'required|string|in:Lunas,Belum Bayar,Transfer',
+                'catatan_penerimaan'  => 'nullable|string',
             ]);
 
             DB::beginTransaction();
 
             $barang = Barang::findOrFail($id);
 
-            $ttdFile = $request->file('ttd_penerima');
+            $ttdFile     = $request->file('ttd_penerima');
             $ttdFilename = 'ttd_' . time() . '_' . uniqid() . '.' . $ttdFile->getClientOriginalExtension();
-            $ttdFile->storeAs('public/foto_barang', $ttdFilename);
+            Storage::disk('public')->putFileAs('foto_barang', $ttdFile, $ttdFilename);
 
-            $fotoFile = $request->file('foto_penerima');
+            $fotoFile     = $request->file('foto_penerima');
             $fotoFilename = 'foto_' . time() . '_' . uniqid() . '.' . $fotoFile->getClientOriginalExtension();
-            $fotoFile->storeAs('public/foto_barang', $fotoFilename);
+            Storage::disk('public')->putFileAs('foto_barang', $fotoFile, $fotoFilename);
 
             $barang->update([
-                'status_barang'   => 'Diterima',
-                'tanggal_terima'  => now(),
-                'ttd_penerima'    => $ttdFilename,
-                'foto_penerima'   => $fotoFilename,
-                'harga_terbayar'  => $request->harga_terbayar,
-                'status_bayar'    => $request->status_bayar,
-                'catatan_penerimaan' => $request->catatan_penerimaan
+                'status_barang'       => 'Diterima',
+                'tanggal_terima'      => now(),
+                'ttd_penerima'        => $ttdFilename,
+                'foto_penerima'       => $fotoFilename,
+                'harga_terbayar'      => $validated['harga_terbayar'],
+                'status_bayar'        => $validated['status_bayar'],
+                'catatan_penerimaan'  => $validated['catatan_penerimaan'] ?? null,
             ]);
 
             DB::commit();
@@ -262,7 +279,10 @@ class BarangController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Barang berhasil ditandai sebagai diterima.',
-                'data'    => $barang
+                'data'    => array_merge($barang->toArray(), [
+                    'foto_penerima_url' => Storage::url('foto_barang/' . $fotoFilename),
+                    'ttd_penerima_url'  => Storage::url('foto_barang/' . $ttdFilename),
+                ]),
             ], 200);
         } catch (ValidationException $e) {
             DB::rollBack();
