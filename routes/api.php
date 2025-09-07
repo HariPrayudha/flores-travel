@@ -15,18 +15,21 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('auth/change-password', [AuthController::class, 'changePassword']);
     Route::post('/logout', [AuthController::class, 'logout']);
 
+    Route::get('/notifications', [NotificationController::class, 'index']);
+    Route::get('/notifications/unread-count', [NotificationController::class, 'unreadCount']);
+    Route::post('/notifications/mark-all-read', [NotificationController::class, 'markAllRead']);
+    Route::post('/notifications/{id}/read', [NotificationController::class, 'markAsRead']);
+    Route::delete('/notifications/{id}', [NotificationController::class, 'destroy']);
+    Route::post('/notifications/bulk-delete', [NotificationController::class, 'bulkDestroy']);
+    Route::post('/save-push-token', [NotificationController::class, 'savePushToken']);
+
     Route::middleware('can:isAdmin')->group(function () {
         Route::apiResource('/karani', KaraniController::class);
         Route::post('karani/{id}/reset-password', [KaraniController::class, 'resetPassword']);
         Route::apiResource('/kota', KotaController::class);
 
-        Route::get('/notifications', [NotificationController::class, 'index']);
-        Route::get('/notifications/unread-count', [NotificationController::class, 'unreadCount']);
-        Route::post('/notifications/mark-all-read', [NotificationController::class, 'markAllRead']);
-        Route::post('/notifications/{id}/read', [NotificationController::class, 'markAsRead']);
-        Route::post('/save-push-token', [NotificationController::class, 'savePushToken']);
-        Route::delete('/notifications/{id}', [NotificationController::class, 'destroy']);
-        Route::post('/notifications/bulk-delete', [NotificationController::class, 'bulkDestroy']);
+        Route::post('/update-barang/{id}/approve', [RequestUpdateBarangController::class, 'approve']);
+        Route::post('/update-barang/{id}/reject',  [RequestUpdateBarangController::class, 'reject']);
     });
 
     Route::get('/kota', [KotaController::class, 'index']);

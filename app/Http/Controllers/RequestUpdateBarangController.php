@@ -9,11 +9,13 @@ use App\Http\Requests\UpdateRequestUpdateBarangRequest;
 use App\Models\Barang;
 use App\Models\User;
 use App\Notifications\RequestUpdateBarangCreated;
+use App\Notifications\RequestUpdateBarangStatusUpdated;
 use Illuminate\Support\Facades\Notification;
 use Exception;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
+use Illuminate\Support\Facades\DB;
 
 class RequestUpdateBarangController extends Controller
 {
@@ -199,6 +201,92 @@ class RequestUpdateBarangController extends Controller
                 'message' => 'Gagal menghapus Request Update barang.',
                 'error'   => $e->getMessage()
             ], 500);
+        }
+    }
+
+    public function approve(Request $request, $id)
+    {
+        try {
+            $admin = $request->user();
+            DB::beginTransaction();
+
+            $req = RequestUpdateBarang::lockForUpdate()->with(['barang', 'user'])->findOrFail($id);
+
+            if ($req->status_update && strtolower($req->status_update) !== 'pending') {
+                return response()->json(['success' => false, 'message' => 'Request sudah diproses.'], 409);
+            }
+
+            $barang = Barang::lockForUpdate()->findOrFail($req->barang_id);
+
+            $barang->update([
+                'kota_asal'        => $req->kota_asal,
+                'kota_tujuan'      => $req->kota_tujuan,
+                'deskripsi_barang' => $req->deskripsi_barang,
+                'nama_pengirim'    => $req->nama_pengirim,
+                'hp_pengirim'      => $req->hp_pengirim,
+                'nama_penerima'    => $req->nama_penerima,
+                'hp_penerima'      => $req->hp_penerima,
+                'harga_awal'       => $req->harga_awal,
+                'status_bayar'     => $req->status_bayar,
+                'user_update'      => $admin?->id,
+            ]);
+
+            $req->status_update = 'Disetujui';
+            $req->save();
+
+            DB::commit();
+
+            $karani = \App\Models\User::find($req->user_id);
+            if ($karani) {
+                $karani->notify(new \App\Notifications\RequestUpdateBarangStatusUpdated($req, 'Disetujui'));
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Request disetujui & data barang diperbarui.',
+                'data'    => $req->load(['barang', 'user'])
+            ]);
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            DB::rollBack();
+            return response()->json(['success' => false, 'message' => 'Data tidak ditemukan'], 404);
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            return response()->json(['success' => false, 'message' => 'Gagal menyetujui request.', 'error' => $e->getMessage()], 500);
+        }
+    }
+
+    public function reject(Request $request, $id)
+    {
+        try {
+            DB::beginTransaction();
+
+            $req = RequestUpdateBarang::lockForUpdate()->with(['barang', 'user'])->findOrFail($id);
+
+            if ($req->status_update && strtolower($req->status_update) !== 'pending') {
+                return response()->json(['success' => false, 'message' => 'Request sudah diproses.'], 409);
+            }
+
+            $req->status_update = 'Ditolak';
+            $req->save();
+
+            DB::commit();
+
+            $karani = \App\Models\User::find($req->user_id);
+            if ($karani) {
+                $karani->notify(new \App\Notifications\RequestUpdateBarangStatusUpdated($req, 'Ditolak'));
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Request ditolak.',
+                'data'    => $req->load(['barang', 'user'])
+            ]);
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            DB::rollBack();
+            return response()->json(['success' => false, 'message' => 'Data tidak ditemukan'], 404);
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            return response()->json(['success' => false, 'message' => 'Gagal menolak request.', 'error' => $e->getMessage()], 500);
         }
     }
 }
