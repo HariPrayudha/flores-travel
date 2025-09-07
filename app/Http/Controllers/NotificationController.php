@@ -36,6 +36,22 @@ class NotificationController extends Controller
         return response()->json(['success' => true]);
     }
 
+    public function markAsRead(Request $request, $id)
+    {
+        $user = $request->user();
+        $notif = $user->notifications()->where('id', $id)->first();
+
+        if (!$notif) {
+            return response()->json(['success' => false, 'message' => 'Notification not found'], 404);
+        }
+
+        if (is_null($notif->read_at)) {
+            $notif->markAsRead();
+        }
+
+        return response()->json(['success' => true, 'data' => $notif]);
+    }
+
     public function savePushToken(Request $request)
     {
         $validated = $request->validate([
