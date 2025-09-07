@@ -9,7 +9,7 @@ use App\Http\Requests\UpdateRequestUpdateBarangRequest;
 use App\Models\Barang;
 use App\Models\User;
 use App\Notifications\RequestUpdateBarangCreated;
-use Illuminate\Support\Facades\Notification; 
+use Illuminate\Support\Facades\Notification;
 use Exception;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
@@ -49,6 +49,7 @@ class RequestUpdateBarangController extends Controller
                 'harga_awal'       => 'required|numeric|min:0',
                 'status_bayar'     => 'required|string|in:Lunas,Belum Bayar,Transfer',
                 'alasan'           => 'nullable|string',
+                'status_update'    => 'nullable|string|in:Pending,Disetujui,Ditolak',
             ]);
 
             $user = $request->user();
@@ -58,15 +59,8 @@ class RequestUpdateBarangController extends Controller
 
             $barang = Barang::findOrFail($validated['barang_id']);
 
-            // if ($barang->status_barang === "Diterima") {
-            //     return response()->json([
-            //         'success' => false,
-            //         'message' => 'Barang tidak bisa diupdate lagi.'
-            //     ], 403);
-            // }
-
             $reqUpdate = RequestUpdateBarang::create([
-                'user_id'          => $user->id,            // dari token
+                'user_id'          => $user->id,
                 'barang_id'        => $barang->id,
                 'kota_asal'        => $validated['kota_asal'],
                 'kota_tujuan'      => $validated['kota_tujuan'],
@@ -78,6 +72,7 @@ class RequestUpdateBarangController extends Controller
                 'harga_awal'       => $validated['harga_awal'],
                 'status_bayar'     => $validated['status_bayar'],
                 'alasan'           => $validated['alasan'] ?? null,
+                'status_update'    => $validated['status_update'] ?? 'Pending',
             ]);
 
             $admins = User::where('role', 'admin')->get();

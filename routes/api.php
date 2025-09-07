@@ -5,6 +5,7 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\BarangController;
 use App\Http\Controllers\KaraniController;
 use App\Http\Controllers\KotaController;
+use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\RequestUpdateBarangController;
 
 Route::post('/login', [AuthController::class, 'login'])->name('login');
@@ -18,6 +19,11 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::apiResource('/karani', KaraniController::class);
         Route::post('karani/{id}/reset-password', [KaraniController::class, 'resetPassword']);
         Route::apiResource('/kota', KotaController::class);
+
+        Route::get('/notifications', [NotificationController::class, 'index']);
+        Route::get('/notifications/unread-count', [NotificationController::class, 'unreadCount']);
+        Route::post('/notifications/mark-all-read', [NotificationController::class, 'markAllRead']);
+        Route::post('/notifications/{id}/mark-read', [NotificationController::class, 'markAsRead']);
     });
 
     Route::get('/kota', [KotaController::class, 'index']);
