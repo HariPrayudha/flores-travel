@@ -43,7 +43,7 @@ class RequestUpdateBarangCreated extends Notification implements ExpoPushable
 
         $ru    = $this->reqUpdate->loadMissing(['barang', 'user']);
         $title = 'Request Update Barang';
-        $body  = "Ada request update dari {$ru->user->name}";
+        $body  = "Ada request update barang nih, dari {$ru->user->name}";
         $data  = $this->toDatabase($notifiable);
 
         $messages = $tokens->map(fn($t) => [

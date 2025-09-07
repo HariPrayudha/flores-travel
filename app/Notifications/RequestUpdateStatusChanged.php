@@ -48,7 +48,7 @@ class RequestUpdateStatusChanged extends Notification implements ExpoPushable
 
         $data  = $this->toDatabase($notifiable);
         $title = 'Status Request Diperbarui';
-        $body  = "Pengajuan kamu {$this->newStatus} • {$data['kode_barang']}";
+        $body  = "Pengajuan kamu {$this->newStatus} untuk barang dengan resi {$data['kode_barang']}";
 
         $messages = $tokens->map(fn($t) => [
             'to'       => $t,
