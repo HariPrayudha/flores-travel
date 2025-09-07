@@ -3,21 +3,15 @@
 namespace App\Notifications\Channels;
 
 use Illuminate\Notifications\Notification;
-use App\Notifications\RequestUpdateBarangCreated;
+use App\Notifications\Contracts\ExpoPushable;
 
 class ExpoPushChannel
 {
-    /**
-     * Send the given notification.
-     *
-     * @param  mixed  $notifiable
-     * @param  \Illuminate\Notifications\Notification  $notification
-     * @return void
-     */
     public function send($notifiable, Notification $notification)
     {
-        if ($notification instanceof RequestUpdateBarangCreated) {
+        if ($notification instanceof ExpoPushable) {
             return $notification->toExpoPush($notifiable);
         }
+        return null;
     }
 }

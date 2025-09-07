@@ -2,29 +2,26 @@
 
 namespace App\Notifications;
 
-use App\Models\PushToken;
-use App\Models\RequestUpdateBarang;
 use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldQueue;
-use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
+use Illuminate\Notifications\Channels\DatabaseChannel;
+use App\Notifications\Channels\ExpoPushChannel;
+use App\Notifications\Contracts\ExpoPushable;
 use Illuminate\Support\Facades\Http;
+use App\Models\PushToken;
 
-class RequestUpdateBarangCreated extends Notification
+class RequestUpdateBarangCreated extends Notification implements ExpoPushable
 {
     use Queueable;
 
-    public function __construct(public RequestUpdateBarang $reqUpdate)
-    {
-        //
-    }
+    public function __construct(public \App\Models\RequestUpdateBarang $reqUpdate) {}
 
     public function via(object $notifiable): array
     {
-        return ['database', 'expo-push'];
+        return [DatabaseChannel::class, ExpoPushChannel::class];
     }
 
-    public function toDatabase($notifiable)
+    public function toDatabase($notifiable): array
     {
         $ru = $this->reqUpdate->loadMissing(['barang', 'user']);
         return [
@@ -42,32 +39,25 @@ class RequestUpdateBarangCreated extends Notification
     public function toExpoPush($notifiable)
     {
         $tokens = PushToken::where('user_id', $notifiable->id)->pluck('token');
+        if ($tokens->isEmpty()) return null;
 
-        if ($tokens->isEmpty()) {
-            return null;
-        }
-
+        $ru    = $this->reqUpdate->loadMissing(['barang', 'user']);
         $title = 'Request Update Barang';
-        $body = "Ada request update dari {$this->reqUpdate->user->name}";
-        $data = $this->toDatabase($notifiable);
+        $body  = "Ada request update dari {$ru->user->name}";
+        $data  = $this->toDatabase($notifiable);
 
-        $messages = [];
-        foreach ($tokens as $token) {
-            $messages[] = [
-                'to' => $token,
-                'title' => $title,
-                'body' => $body,
-                'data' => $data,
-                'sound' => 'default',
-                'priority' => 'high',
-            ];
-        }
+        $messages = $tokens->map(fn($t) => [
+            'to'       => $t,
+            'title'    => $title,
+            'body'     => $body,
+            'data'     => $data,
+            'sound'    => 'default',
+            'priority' => 'high',
+        ])->values()->all();
 
-        $response = Http::withHeaders([
-            'Accept' => 'application/json',
+        return Http::withHeaders([
+            'Accept'       => 'application/json',
             'Content-Type' => 'application/json',
         ])->post('https://exp.host/--/api/v2/push/send', $messages);
-
-        return $response;
     }
 }

@@ -211,16 +211,24 @@ class RequestUpdateBarangController extends Controller
 
             DB::beginTransaction();
 
+            // Lock request + eager load relasi untuk dipakai setelahnya
             $req = RequestUpdateBarang::lockForUpdate()
                 ->with(['barang', 'user'])
                 ->findOrFail($id);
 
+            // Hanya boleh diproses kalau masih pending / null
             if ($req->status_update && strtolower($req->status_update) !== 'pending') {
-                return response()->json(['success' => false, 'message' => 'Request sudah diproses.'], 409);
+                DB::rollBack();
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Request sudah diproses.'
+                ], 409);
             }
 
+            // Lock barang agar konsisten
             $barang = Barang::lockForUpdate()->findOrFail($req->barang_id);
 
+            // Terapkan perubahan dari request ke barang
             $barang->update([
                 'kota_asal'        => $req->kota_asal,
                 'kota_tujuan'      => $req->kota_tujuan,
@@ -234,18 +242,20 @@ class RequestUpdateBarangController extends Controller
                 'user_update'      => $admin?->id,
             ]);
 
+            // Update status request
             $req->status_update = 'Disetujui';
             $req->save();
 
             DB::commit();
 
+            // Kirim notifikasi ke karani (pemilik pengajuan)
             if ($req->user_id) {
                 $karani = User::find($req->user_id);
                 if ($karani) {
                     $karani->notify(new RequestUpdateStatusChanged(
-                        req: $req->fresh(['barang', 'user']),
+                        reqUpdate: $req->fresh(['barang', 'user']),
                         newStatus: 'Disetujui',
-                        updatedByName: $admin?->name
+                        actor: $admin
                     ));
                 }
             }
@@ -253,14 +263,21 @@ class RequestUpdateBarangController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Request disetujui & data barang diperbarui.',
-                'data'    => $req->load(['barang', 'user'])
+                'data'    => $req->load(['barang', 'user']),
             ]);
         } catch (ModelNotFoundException $e) {
             DB::rollBack();
-            return response()->json(['success' => false, 'message' => 'Data tidak ditemukan'], 404);
+            return response()->json([
+                'success' => false,
+                'message' => 'Data tidak ditemukan'
+            ], 404);
         } catch (\Throwable $e) {
             DB::rollBack();
-            return response()->json(['success' => false, 'message' => 'Gagal menyetujui request.', 'error' => $e->getMessage()], 500);
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal menyetujui request.',
+                'error'   => $e->getMessage()
+            ], 500);
         }
     }
 
@@ -276,7 +293,11 @@ class RequestUpdateBarangController extends Controller
                 ->findOrFail($id);
 
             if ($req->status_update && strtolower($req->status_update) !== 'pending') {
-                return response()->json(['success' => false, 'message' => 'Request sudah diproses.'], 409);
+                DB::rollBack();
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Request sudah diproses.'
+                ], 409);
             }
 
             $req->status_update = 'Ditolak';
@@ -288,9 +309,9 @@ class RequestUpdateBarangController extends Controller
                 $karani = User::find($req->user_id);
                 if ($karani) {
                     $karani->notify(new RequestUpdateStatusChanged(
-                        req: $req->fresh(['barang', 'user']),
+                        reqUpdate: $req->fresh(['barang', 'user']),
                         newStatus: 'Ditolak',
-                        updatedByName: $admin?->name
+                        actor: $admin
                     ));
                 }
             }
@@ -298,14 +319,21 @@ class RequestUpdateBarangController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Request ditolak.',
-                'data'    => $req->load(['barang', 'user'])
+                'data'    => $req->load(['barang', 'user']),
             ]);
         } catch (ModelNotFoundException $e) {
             DB::rollBack();
-            return response()->json(['success' => false, 'message' => 'Data tidak ditemukan'], 404);
+            return response()->json([
+                'success' => false,
+                'message' => 'Data tidak ditemukan'
+            ], 404);
         } catch (\Throwable $e) {
             DB::rollBack();
-            return response()->json(['success' => false, 'message' => 'Gagal menolak request.', 'error' => $e->getMessage()], 500);
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal menolak request.',
+                'error'   => $e->getMessage()
+            ], 500);
         }
     }
 }

@@ -1,56 +1,54 @@
 <?php
 
-// app/Notifications/RequestUpdateStatusChanged.php
 namespace App\Notifications;
 
-use App\Models\PushToken;
-use App\Models\RequestUpdateBarang;
 use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Notification;
-use Illuminate\Notifications\Messages\DatabaseMessage; // optional
+use Illuminate\Notifications\Channels\DatabaseChannel;
+use App\Notifications\Channels\ExpoPushChannel;
+use App\Notifications\Contracts\ExpoPushable;
 use Illuminate\Support\Facades\Http;
+use App\Models\PushToken;
+use App\Models\User;
 
-class RequestUpdateStatusChanged extends Notification
+class RequestUpdateStatusChanged extends Notification implements ExpoPushable
 {
     use Queueable;
 
     public function __construct(
-        public RequestUpdateBarang $req,
-        public string $newStatus,           // 'Disetujui' / 'Ditolak'
-        public ?string $updatedByName = null
+        public \App\Models\RequestUpdateBarang $reqUpdate,
+        public string $newStatus,
+        public ?User $actor = null
     ) {}
 
-    public function via($notifiable): array
+    public function via(object $notifiable): array
     {
-        return [
-            'database',
-            \App\Notifications\Channels\ExpoPushChannel::class,
-        ];
+        return [DatabaseChannel::class, ExpoPushChannel::class];
     }
 
     public function toDatabase($notifiable): array
     {
-        $r = $this->req->loadMissing(['barang', 'user']);
+        $ru = $this->reqUpdate->loadMissing(['barang', 'user']);
 
         return [
-            'type'               => 'request_update_status', // ← penting untuk FE
-            'request_update_id'  => $r->id,
-            'barang_id'          => $r->barang_id,
-            'kode_barang'        => optional($r->barang)->kode_barang,
+            'type'               => 'request_update_status',
+            'request_update_id'  => $ru->id,
+            'barang_id'          => $ru->barang_id,
+            'kode_barang'        => optional($ru->barang)->kode_barang,
             'new_status'         => $this->newStatus,
-            'updated_by'         => $this->updatedByName,
+            'updated_by'         => $this->actor?->name,
             'created_at'         => now()->toISOString(),
         ];
     }
 
     public function toExpoPush($notifiable)
     {
-        $tokens = \App\Models\PushToken::where('user_id', $notifiable->id)->pluck('token');
+        $tokens = PushToken::where('user_id', $notifiable->id)->pluck('token');
         if ($tokens->isEmpty()) return null;
 
-        $title = 'Status Request Update';
-        $body  = "Pengajuan kamu {$this->newStatus}";
         $data  = $this->toDatabase($notifiable);
+        $title = 'Status Request Diperbarui';
+        $body  = "Pengajuan kamu {$this->newStatus} • {$data['kode_barang']}";
 
         $messages = $tokens->map(fn($t) => [
             'to'       => $t,
