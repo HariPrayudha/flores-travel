@@ -22,6 +22,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('/notifications/{id}', [NotificationController::class, 'destroy']);
     Route::post('/notifications/bulk-delete', [NotificationController::class, 'bulkDestroy']);
     Route::post('/save-push-token', [NotificationController::class, 'savePushToken']);
+    Route::post('/delete-push-token', [NotificationController::class, 'deleteOwnToken']);
 
     Route::middleware('can:isAdmin')->group(function () {
         Route::apiResource('/karani', KaraniController::class);

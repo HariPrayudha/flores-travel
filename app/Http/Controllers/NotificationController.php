@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\PushToken;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 
 class NotificationController extends Controller
@@ -60,10 +61,16 @@ class NotificationController extends Controller
             'platform' => 'required|in:ios,android'
         ]);
 
-        PushToken::updateOrCreate(
-            ['user_id' => $validated['user_id'], 'platform' => $validated['platform']],
-            ['token' => $validated['token']]
-        );
+        DB::transaction(function () use ($validated) {
+            PushToken::where('token', $validated['token'])
+                ->where('user_id', '!=', $validated['user_id'])
+                ->delete();
+
+            PushToken::updateOrCreate(
+                ['user_id' => $validated['user_id'], 'platform' => $validated['platform']],
+                ['token'   => $validated['token']]
+            );
+        });
 
         return response()->json(['success' => true]);
     }
@@ -95,5 +102,12 @@ class NotificationController extends Controller
             'success' => true,
             'data'    => ['deleted' => $deleted],
         ]);
+    }
+
+    public function deleteOwnToken(Request $request)
+    {
+        $validated = $request->validate(['token' => 'required|string']);
+        PushToken::where('token', $validated['token'])->delete();
+        return response()->json(['success' => true]);
     }
 }

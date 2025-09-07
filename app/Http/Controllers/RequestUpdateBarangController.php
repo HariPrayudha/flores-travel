@@ -9,7 +9,7 @@ use App\Http\Requests\UpdateRequestUpdateBarangRequest;
 use App\Models\Barang;
 use App\Models\User;
 use App\Notifications\RequestUpdateBarangCreated;
-use App\Notifications\RequestUpdateBarangStatusUpdated;
+use App\Notifications\RequestUpdateStatusChanged;
 use Illuminate\Support\Facades\Notification;
 use Exception;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -208,9 +208,12 @@ class RequestUpdateBarangController extends Controller
     {
         try {
             $admin = $request->user();
+
             DB::beginTransaction();
 
-            $req = RequestUpdateBarang::lockForUpdate()->with(['barang', 'user'])->findOrFail($id);
+            $req = RequestUpdateBarang::lockForUpdate()
+                ->with(['barang', 'user'])
+                ->findOrFail($id);
 
             if ($req->status_update && strtolower($req->status_update) !== 'pending') {
                 return response()->json(['success' => false, 'message' => 'Request sudah diproses.'], 409);
@@ -236,9 +239,15 @@ class RequestUpdateBarangController extends Controller
 
             DB::commit();
 
-            $karani = \App\Models\User::find($req->user_id);
-            if ($karani) {
-                $karani->notify(new \App\Notifications\RequestUpdateBarangStatusUpdated($req, 'Disetujui'));
+            if ($req->user_id) {
+                $karani = User::find($req->user_id);
+                if ($karani) {
+                    $karani->notify(new RequestUpdateStatusChanged(
+                        req: $req->fresh(['barang', 'user']),
+                        newStatus: 'Disetujui',
+                        updatedByName: $admin?->name
+                    ));
+                }
             }
 
             return response()->json([
@@ -246,7 +255,7 @@ class RequestUpdateBarangController extends Controller
                 'message' => 'Request disetujui & data barang diperbarui.',
                 'data'    => $req->load(['barang', 'user'])
             ]);
-        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+        } catch (ModelNotFoundException $e) {
             DB::rollBack();
             return response()->json(['success' => false, 'message' => 'Data tidak ditemukan'], 404);
         } catch (\Throwable $e) {
@@ -258,9 +267,13 @@ class RequestUpdateBarangController extends Controller
     public function reject(Request $request, $id)
     {
         try {
+            $admin = $request->user();
+
             DB::beginTransaction();
 
-            $req = RequestUpdateBarang::lockForUpdate()->with(['barang', 'user'])->findOrFail($id);
+            $req = RequestUpdateBarang::lockForUpdate()
+                ->with(['barang', 'user'])
+                ->findOrFail($id);
 
             if ($req->status_update && strtolower($req->status_update) !== 'pending') {
                 return response()->json(['success' => false, 'message' => 'Request sudah diproses.'], 409);
@@ -271,9 +284,15 @@ class RequestUpdateBarangController extends Controller
 
             DB::commit();
 
-            $karani = \App\Models\User::find($req->user_id);
-            if ($karani) {
-                $karani->notify(new \App\Notifications\RequestUpdateBarangStatusUpdated($req, 'Ditolak'));
+            if ($req->user_id) {
+                $karani = User::find($req->user_id);
+                if ($karani) {
+                    $karani->notify(new RequestUpdateStatusChanged(
+                        req: $req->fresh(['barang', 'user']),
+                        newStatus: 'Ditolak',
+                        updatedByName: $admin?->name
+                    ));
+                }
             }
 
             return response()->json([
@@ -281,7 +300,7 @@ class RequestUpdateBarangController extends Controller
                 'message' => 'Request ditolak.',
                 'data'    => $req->load(['barang', 'user'])
             ]);
-        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+        } catch (ModelNotFoundException $e) {
             DB::rollBack();
             return response()->json(['success' => false, 'message' => 'Data tidak ditemukan'], 404);
         } catch (\Throwable $e) {
