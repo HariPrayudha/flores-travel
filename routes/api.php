@@ -23,6 +23,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/notifications', [NotificationController::class, 'index']);
         Route::get('/notifications/unread-count', [NotificationController::class, 'unreadCount']);
         Route::post('/notifications/mark-all-read', [NotificationController::class, 'markAllRead']);
+        Route::post('/save-push-token', [NotificationController::class, 'savePushToken']);
     });
 
     Route::get('/kota', [KotaController::class, 'index']);

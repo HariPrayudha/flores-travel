@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\PushToken;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Http;
 
 class NotificationController extends Controller
 {
@@ -49,5 +51,46 @@ class NotificationController extends Controller
     //     }
 
     //     return response()->json(['success' => true, 'data' => $notif]);
+    // }
+
+    public function savePushToken(Request $request)
+    {
+        $validated = $request->validate([
+            'token' => 'required|string',
+            'user_id' => 'required|exists:users,id',
+            'platform' => 'required|in:ios,android'
+        ]);
+
+        PushToken::updateOrCreate(
+            [
+                'user_id' => $validated['user_id'],
+                'platform' => $validated['platform']
+            ],
+            ['token' => $validated['token']]
+        );
+
+        return response()->json(['success' => true]);
+    }
+
+    // public function sendExpoPushNotification($tokens, $title, $body, $data = [])
+    // {
+    //     $messages = [];
+
+    //     foreach ($tokens as $token) {
+    //         $messages[] = [
+    //             'to' => $token,
+    //             'title' => $title,
+    //             'body' => $body,
+    //             'data' => $data,
+    //             'sound' => 'default',
+    //             'priority' => 'high',
+    //         ];
+    //     }
+
+    //     return Http::withHeaders([
+    //         'Accept' => 'application/json',
+    //         'Accept-Encoding' => 'gzip, deflate',
+    //         'Content-Type' => 'application/json',
+    //     ])->post('https://exp.host/--/api/v2/push/send', $messages);
     // }
 }
