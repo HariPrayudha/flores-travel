@@ -72,7 +72,7 @@ class RequestUpdateBarangController extends Controller
                 'harga_awal'       => $validated['harga_awal'],
                 'status_bayar'     => $validated['status_bayar'],
                 'alasan'           => $validated['alasan'] ?? null,
-                'status_update'    => $validated['status_update'] ?? 'Pending',
+                'status_update'    => 'Pending',
             ]);
 
             $admins = User::where('role', 'admin')->get();

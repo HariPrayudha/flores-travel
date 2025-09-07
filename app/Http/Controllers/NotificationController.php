@@ -6,54 +6,48 @@ use Illuminate\Http\Request;
 
 class NotificationController extends Controller
 {
-    public function unreadCount(Request $request)
+    public function index(Request $request)
     {
-        $user = $request->user();
+        // terbaru duluan, limit sederhana
+        $list = $request->user()->notifications()
+            ->orderBy('created_at', 'desc')
+            ->take((int)($request->get('limit', 50)))
+            ->get();
+
         return response()->json([
             'success' => true,
-            'data' => ['unread_count' => $user->unreadNotifications()->count()],
+            'data' => $list,
         ]);
     }
 
-    public function index(Request $request)
+    public function unreadCount(Request $request)
     {
-        $user = $request->user();
-        $onlyUnread = filter_var($request->query('only_unread'), FILTER_VALIDATE_BOOL);
-        $perPage = (int) ($request->query('per_page', 20));
-
-        $query = $onlyUnread ? $user->unreadNotifications() : $user->notifications();
-        $notifications = $query->latest()->paginate($perPage);
-
+        $count = $request->user()->unreadNotifications()->count();
         return response()->json([
             'success' => true,
-            'data'    => $notifications,
+            'data' => ['unread_count' => $count],
         ]);
     }
 
     public function markAllRead(Request $request)
     {
-        $user = $request->user();
-        $user->unreadNotifications->markAsRead();
-
-        return response()->json([
-            'success' => true,
-            'message' => 'All notifications marked as read.',
-        ]);
+        $request->user()->unreadNotifications->markAsRead();
+        return response()->json(['success' => true]);
     }
 
-    public function markAsRead(Request $request, $id)
-    {
-        $user = $request->user();
-        $notif = $user->notifications()->where('id', $id)->first();
+    // public function markAsRead(Request $request, $id)
+    // {
+    //     $user = $request->user();
+    //     $notif = $user->notifications()->where('id', $id)->first();
 
-        if (!$notif) {
-            return response()->json(['success' => false, 'message' => 'Notification not found'], 404);
-        }
+    //     if (!$notif) {
+    //         return response()->json(['success' => false, 'message' => 'Notification not found'], 404);
+    //     }
 
-        if (is_null($notif->read_at)) {
-            $notif->markAsRead();
-        }
+    //     if (is_null($notif->read_at)) {
+    //         $notif->markAsRead();
+    //     }
 
-        return response()->json(['success' => true, 'data' => $notif]);
-    }
+    //     return response()->json(['success' => true, 'data' => $notif]);
+    // }
 }
