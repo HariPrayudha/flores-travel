@@ -24,6 +24,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/notifications/unread-count', [NotificationController::class, 'unreadCount']);
         Route::post('/notifications/mark-all-read', [NotificationController::class, 'markAllRead']);
         Route::post('/save-push-token', [NotificationController::class, 'savePushToken']);
+        Route::delete('/notifications/{id}', [NotificationController::class, 'destroy']);
+        Route::post('/notifications/bulk-delete', [NotificationController::class, 'bulkDestroy']);
     });
 
     Route::get('/kota', [KotaController::class, 'index']);
