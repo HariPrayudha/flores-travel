@@ -41,17 +41,18 @@ class RequestUpdateBarangController extends Controller
         try {
             $validated = $request->validate([
                 'barang_id'        => 'required|exists:barangs,id',
-                'kota_asal'        => 'required|exists:kotas,id',
-                'kota_tujuan'      => 'required|exists:kotas,id',
-                'deskripsi_barang' => 'required|string',
-                'nama_pengirim'    => 'required|string|max:255',
-                'hp_pengirim'      => 'required|string|max:20',
-                'nama_penerima'    => 'required|string|max:255',
-                'hp_penerima'      => 'required|string|max:20',
-                'harga_awal'       => 'required|numeric|min:0',
-                'status_bayar'     => 'required|string|in:Lunas,Belum Bayar,Transfer',
-                'alasan'           => 'nullable|string',
-                'status_update'    => 'nullable|string|in:Pending,Disetujui,Ditolak',
+                'kota_asal'        => 'sometimes|nullable|exists:kotas,id',
+                'kota_tujuan'      => 'sometimes|nullable|exists:kotas,id',
+                'deskripsi_barang' => 'sometimes|nullable|string',
+                'nama_pengirim'    => 'sometimes|nullable|string|max:255',
+                'hp_pengirim'      => 'sometimes|nullable|string|max:20',
+                'nama_penerima'    => 'sometimes|nullable|string|max:255',
+                'hp_penerima'      => 'sometimes|nullable|string|max:20',
+                'harga_awal'       => 'sometimes|nullable|numeric|min:0',
+                'harga_terbayar'   => 'sometimes|nullable|numeric|min:0',
+                'status_bayar'     => 'sometimes|nullable|string|in:Lunas,Belum Bayar,Transfer',
+                'alasan'           => 'sometimes|nullable|string',
+                'status_update'    => 'sometimes|nullable|string|in:Pending,Disetujui,Ditolak',
             ]);
 
             $user = $request->user();
@@ -61,21 +62,41 @@ class RequestUpdateBarangController extends Controller
 
             $barang = Barang::findOrFail($validated['barang_id']);
 
-            $reqUpdate = RequestUpdateBarang::create([
-                'user_id'          => $user->id,
-                'barang_id'        => $barang->id,
-                'kota_asal'        => $validated['kota_asal'],
-                'kota_tujuan'      => $validated['kota_tujuan'],
-                'deskripsi_barang' => $validated['deskripsi_barang'],
-                'nama_pengirim'    => $validated['nama_pengirim'],
-                'hp_pengirim'      => $validated['hp_pengirim'],
-                'nama_penerima'    => $validated['nama_penerima'],
-                'hp_penerima'      => $validated['hp_penerima'],
-                'harga_awal'       => $validated['harga_awal'],
-                'status_bayar'     => $validated['status_bayar'],
-                'alasan'           => $validated['alasan'] ?? null,
-                'status_update'    => 'Pending',
-            ]);
+            $updatableKeys = [
+                'kota_asal',
+                'kota_tujuan',
+                'deskripsi_barang',
+                'nama_pengirim',
+                'hp_pengirim',
+                'nama_penerima',
+                'hp_penerima',
+                'harga_awal',
+                'harga_terbayar',
+                'status_bayar',
+                'alasan'
+            ];
+            $hasAny = collect($updatableKeys)->some(fn($k) => $request->has($k));
+
+            if (!$hasAny) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Tidak ada perubahan yang diajukan.',
+                    'errors'  => ['fields' => ['Minimal satu field harus diisi untuk request update.']]
+                ], 422);
+            }
+
+            $data = [
+                'user_id'       => $user->id,
+                'barang_id'     => $barang->id,
+                'status_update' => 'Pending',
+            ];
+            foreach ($updatableKeys as $k) {
+                if (array_key_exists($k, $validated)) {
+                    $data[$k] = $validated[$k];
+                }
+            }
+
+            $reqUpdate = RequestUpdateBarang::create($data);
 
             $admins = User::where('role', 'admin')->get();
             Notification::send($admins, new RequestUpdateBarangCreated($reqUpdate));
@@ -90,7 +111,7 @@ class RequestUpdateBarangController extends Controller
                 'message' => $e->getMessage(),
                 'errors'  => $e->errors()
             ], 422);
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to request update barang',

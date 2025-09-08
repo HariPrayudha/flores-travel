@@ -23,6 +23,7 @@ return new class extends Migration
             $table->string('nama_penerima');
             $table->string('hp_penerima');
             $table->decimal('harga_awal');
+            $table->decimal('harga_terbayar');
             $table->string('status_bayar')->default("Belum Bayar");
             $table->text('alasan')->nullable();
             $table->text('status_update')->nullable();
