@@ -11,6 +11,7 @@ use App\Models\Kota;
 use Exception;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
@@ -395,13 +396,9 @@ class BarangController extends Controller
 
     public function destroy($id)
     {
-        $user = auth()->user();
-
+        $user = Auth::user();
         if (!$user || $user->role !== 'admin') {
-            return response()->json([
-                'success' => false,
-                'message' => 'Anda tidak memiliki izin untuk menghapus data ini.'
-            ], 403);
+            return response()->json(['success' => false, 'message' => 'Anda tidak memiliki izin untuk menghapus data ini.'], 403);
         }
 
         try {
@@ -410,26 +407,65 @@ class BarangController extends Controller
             $barang = Barang::with('fotoBarang')->findOrFail($id);
 
             foreach ($barang->fotoBarang as $foto) {
-                Storage::delete('public/foto_barang/' . $foto->nama_file);
+                Storage::disk('public')->delete('foto_barang/' . $foto->nama_file);
                 $foto->delete();
+            }
+
+            if ($barang->foto_penerima) {
+                Storage::disk('public')->delete('foto_barang/' . $barang->foto_penerima);
+            }
+            if ($barang->ttd_penerima) {
+                Storage::disk('public')->delete('foto_barang/' . $barang->ttd_penerima);
             }
 
             $barang->delete();
 
             DB::commit();
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Data barang berhasil dihapus.'
-            ], 200);
+            return response()->json(['success' => true, 'message' => 'Data barang berhasil dihapus.'], 200);
         } catch (Exception $e) {
             DB::rollBack();
+            return response()->json(['success' => false, 'message' => 'Gagal menghapus data.', 'error' => $e->getMessage()], 500);
+        }
+    }
 
-            return response()->json([
-                'success' => false,
-                'message' => 'Gagal menghapus data.',
-                'error'   => $e->getMessage()
-            ], 500);
+    public function bulkDestroy(Request $request)
+    {
+        $user = Auth::user();
+        if (!$user || $user->role !== 'admin') {
+            return response()->json(['success' => false, 'message' => 'Anda tidak memiliki izin untuk menghapus data ini.'], 403);
+        }
+
+        $validated = $request->validate([
+            'ids'   => ['required', 'array', 'min:1'],
+            'ids.*' => ['integer', 'exists:barangs,id'],
+        ]);
+
+        try {
+            DB::beginTransaction();
+
+            $barangs = Barang::with('fotoBarang')
+                ->whereIn('id', $validated['ids'])
+                ->get();
+
+            foreach ($barangs as $barang) {
+                foreach ($barang->fotoBarang as $foto) {
+                    Storage::disk('public')->delete('foto_barang/' . $foto->nama_file);
+                    $foto->delete();
+                }
+                if ($barang->foto_penerima) {
+                    Storage::disk('public')->delete('foto_barang/' . $barang->foto_penerima);
+                }
+                if ($barang->ttd_penerima) {
+                    Storage::disk('public')->delete('foto_barang/' . $barang->ttd_penerima);
+                }
+                $barang->delete();
+            }
+
+            DB::commit();
+            return response()->json(['success' => true, 'deleted' => $validated['ids']], 200);
+        } catch (Exception $e) {
+            DB::rollBack();
+            return response()->json(['success' => false, 'message' => 'Gagal menghapus data.', 'error' => $e->getMessage()], 500);
         }
     }
 }

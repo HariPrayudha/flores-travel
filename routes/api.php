@@ -31,6 +31,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
         Route::post('/update-barang/{id}/approve', [RequestUpdateBarangController::class, 'approve']);
         Route::post('/update-barang/{id}/reject',  [RequestUpdateBarangController::class, 'reject']);
+        Route::post('/barang/bulk-delete', [BarangController::class, 'bulkDestroy']);
     });
 
     Route::get('/kota', [KotaController::class, 'index']);
