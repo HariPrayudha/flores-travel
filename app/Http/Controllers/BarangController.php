@@ -182,8 +182,11 @@ class BarangController extends Controller
                 'status_barang'     => 'nullable|string|in:Diterima,Belum Diterima',
                 'foto_barang.*'     => 'sometimes|image|mimes:jpg,jpeg,png|max:2048',
                 'foto_penerima'     => 'sometimes|image|mimes:jpg,jpeg,png|max:2048',
+                'ttd_penerima'      => 'sometimes|image|mimes:jpg,jpeg,png|max:2048',
                 'delete_foto_ids'    => ['nullable', 'array'],
                 'delete_foto_ids.*'  => ['integer', 'exists:foto_barangs,id'],
+                'clear_foto_penerima' => 'nullable|boolean',
+                'clear_ttd_penerima'  => 'nullable|boolean',
             ]);
 
             DB::beginTransaction();
@@ -234,13 +237,11 @@ class BarangController extends Controller
                 'status_bayar',
                 'status_barang',
             ];
-
             foreach ($updatable as $field) {
                 if ($request->has($field)) {
                     $barang->{$field} = $validated[$field] ?? null;
                 }
             }
-
             $barang->save();
 
             $idsToDelete = $request->input('delete_foto_ids', []);
@@ -267,14 +268,38 @@ class BarangController extends Controller
                 }
             }
 
-            if ($request->hasFile('foto_penerima')) {
+            if ($request->boolean('clear_foto_penerima')) {
+                if ($barang->foto_penerima) {
+                    Storage::disk('public')->delete('foto_barang/' . $barang->foto_penerima);
+                }
+                $barang->foto_penerima = null;
+                $barang->save();
+            } elseif ($request->hasFile('foto_penerima')) {
                 if ($barang->foto_penerima) {
                     Storage::disk('public')->delete('foto_barang/' . $barang->foto_penerima);
                 }
                 $fp = $request->file('foto_penerima');
                 $fpName = 'foto_' . time() . '_' . uniqid() . '.' . $fp->getClientOriginalExtension();
                 Storage::disk('public')->putFileAs('foto_barang', $fp, $fpName);
-                $barang->update(['foto_penerima' => $fpName]);
+                $barang->foto_penerima = $fpName;
+                $barang->save();
+            }
+
+            if ($request->boolean('clear_ttd_penerima')) {
+                if ($barang->ttd_penerima) {
+                    Storage::disk('public')->delete('foto_barang/' . $barang->ttd_penerima);
+                }
+                $barang->ttd_penerima = null;
+                $barang->save();
+            } elseif ($request->hasFile('ttd_penerima')) {
+                if ($barang->ttd_penerima) {
+                    Storage::disk('public')->delete('foto_barang/' . $barang->ttd_penerima);
+                }
+                $ttd = $request->file('ttd_penerima');
+                $ttdName = 'ttd_' . time() . '_' . uniqid() . '.' . $ttd->getClientOriginalExtension();
+                Storage::disk('public')->putFileAs('foto_barang', $ttd, $ttdName);
+                $barang->ttd_penerima = $ttdName;
+                $barang->save();
             }
 
             DB::commit();
