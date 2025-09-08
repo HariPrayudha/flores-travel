@@ -170,38 +170,73 @@ class BarangController extends Controller
     {
         try {
             $validated = $request->validate([
-                'kota_asal'        => 'nullable|exists:kotas,id',
-                'kota_tujuan'      => 'nullable|exists:kotas,id',
-                'deskripsi_barang' => 'nullable|string',
-                'nama_pengirim'    => 'nullable|string|max:255',
-                'hp_pengirim'      => 'nullable|string|max:20',
-                'nama_penerima'    => 'nullable|string|max:255',
-                'hp_penerima'      => 'nullable|string|max:20',
-                'harga_awal'       => 'nullable|numeric|min:0',
-                'status_bayar'     => 'nullable|string|in:Lunas,Belum Bayar,Transfer',
-                'status_barang'    => 'nullable|string|in:Diterima,Belum Diterima',
-                'foto_barang.*'    => 'sometimes|image|mimes:jpg,jpeg,png|max:2048',
-                'foto_penerima'    => 'sometimes|image|mimes:jpg,jpeg,png|max:2048',
-                'delete_foto_ids'   => ['nullable', 'array'],
-                'delete_foto_ids.*' => ['integer', 'exists:foto_barangs,id'],
+                'kota_asal'         => 'nullable|exists:kotas,id',
+                'kota_tujuan'       => 'nullable|exists:kotas,id',
+                'deskripsi_barang'  => 'nullable|string',
+                'nama_pengirim'     => 'nullable|string|max:255',
+                'hp_pengirim'       => 'nullable|string|max:20',
+                'nama_penerima'     => 'nullable|string|max:255',
+                'hp_penerima'       => 'nullable|string|max:20',
+                'harga_awal'        => 'nullable|numeric|min:0',
+                'status_bayar'      => 'nullable|string|in:Lunas,Belum Bayar,Transfer',
+                'status_barang'     => 'nullable|string|in:Diterima,Belum Diterima',
+                'foto_barang.*'     => 'sometimes|image|mimes:jpg,jpeg,png|max:2048',
+                'foto_penerima'     => 'sometimes|image|mimes:jpg,jpeg,png|max:2048',
+                'delete_foto_ids'    => ['nullable', 'array'],
+                'delete_foto_ids.*'  => ['integer', 'exists:foto_barangs,id'],
             ]);
 
             DB::beginTransaction();
 
             $barang = Barang::with('fotoBarang')->findOrFail($id);
 
-            $barang->update([
-                'kota_asal'        => $validated['kota_asal'],
-                'kota_tujuan'      => $validated['kota_tujuan'],
-                'deskripsi_barang' => $validated['deskripsi_barang'],
-                'nama_pengirim'    => $validated['nama_pengirim'],
-                'hp_pengirim'      => $validated['hp_pengirim'],
-                'nama_penerima'    => $validated['nama_penerima'],
-                'hp_penerima'      => $validated['hp_penerima'],
-                'harga_awal'       => $validated['harga_awal'],
-                'status_bayar'     => $validated['status_bayar'],
-                'status_barang'    => $validated['status_barang'],
-            ]);
+            if ($request->has('kota_tujuan')) {
+                $kotaTujuanIdBaru = $validated['kota_tujuan'];
+                if (!is_null($kotaTujuanIdBaru)) {
+                    $namaKotaTujuanBaru = Kota::where('id', $kotaTujuanIdBaru)->value('nama');
+                    $prefixBaru = $namaKotaTujuanBaru ? mb_substr($namaKotaTujuanBaru, 0, 1) : 'X';
+
+                    $parts = explode('-', (string) $barang->kode_barang, 3);
+                    if (count($parts) === 3) {
+                        [$oldPrefix, $oldTanggal, $oldNomor] = $parts;
+                        $kodeBaru = $prefixBaru . '-' . $oldTanggal . '-' . $oldNomor;
+
+                        if ($kodeBaru !== $barang->kode_barang) {
+                            if (Barang::where('kode_barang', $kodeBaru)->where('id', '!=', $barang->id)->exists()) {
+                                DB::rollBack();
+                                return response()->json([
+                                    'success' => false,
+                                    'message' => 'Perubahan kode resi dibatalkan karena kode baru sudah digunakan.',
+                                    'errors'  => ['kode_barang' => ['Kode resi sudah ada.']]
+                                ], 422);
+                            }
+
+                            $barang->kode_barang = $kodeBaru;
+                        }
+                    }
+                }
+            }
+
+            $updatable = [
+                'kota_asal',
+                'kota_tujuan',
+                'deskripsi_barang',
+                'nama_pengirim',
+                'hp_pengirim',
+                'nama_penerima',
+                'hp_penerima',
+                'harga_awal',
+                'status_bayar',
+                'status_barang',
+            ];
+
+            foreach ($updatable as $field) {
+                if ($request->has($field)) {
+                    $barang->{$field} = $validated[$field] ?? null;
+                }
+            }
+
+            $barang->save();
 
             $idsToDelete = $request->input('delete_foto_ids', []);
             if (!empty($idsToDelete)) {
