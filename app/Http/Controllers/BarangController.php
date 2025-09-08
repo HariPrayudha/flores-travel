@@ -188,30 +188,35 @@ class BarangController extends Controller
 
             DB::beginTransaction();
 
-            $barang = Barang::with('fotoBarang')->findOrFail($id);
+            $barang = Barang::with('fotoBarang')->lockForUpdate()->findOrFail($id);
 
             if ($request->has('kota_tujuan')) {
-                $kotaTujuanIdBaru = $validated['kota_tujuan'];
-                if (!is_null($kotaTujuanIdBaru)) {
-                    $namaKotaTujuanBaru = Kota::where('id', $kotaTujuanIdBaru)->value('nama');
-                    $prefixBaru = $namaKotaTujuanBaru ? mb_substr($namaKotaTujuanBaru, 0, 1) : 'X';
+                $kotaBaruId = $validated['kota_tujuan'] ?? null;
+
+                if (!is_null($kotaBaruId)) {
+                    $namaKotaBaru = Kota::where('id', $kotaBaruId)->value('nama');
+                    $prefixBaru = $namaKotaBaru ? mb_substr($namaKotaBaru, 0, 1) : 'X';
 
                     $parts = explode('-', (string) $barang->kode_barang, 3);
                     if (count($parts) === 3) {
                         [$oldPrefix, $oldTanggal, $oldNomor] = $parts;
-                        $kodeBaru = $prefixBaru . '-' . $oldTanggal . '-' . $oldNomor;
 
-                        if ($kodeBaru !== $barang->kode_barang) {
-                            if (Barang::where('kode_barang', $kodeBaru)->where('id', '!=', $barang->id)->exists()) {
-                                DB::rollBack();
-                                return response()->json([
-                                    'success' => false,
-                                    'message' => 'Perubahan kode resi dibatalkan karena kode baru sudah digunakan.',
-                                    'errors'  => ['kode_barang' => ['Kode resi sudah ada.']]
-                                ], 422);
+                        if ($prefixBaru !== $oldPrefix) {
+                            $num = (int) $oldNomor;
+                            while (true) {
+                                $numStr = str_pad($num, 3, '0', STR_PAD_LEFT);
+                                $candidate = "{$prefixBaru}-{$oldTanggal}-{$numStr}";
+
+                                $exists = Barang::where('kode_barang', $candidate)
+                                    ->where('id', '!=', $barang->id)
+                                    ->exists();
+
+                                if (!$exists) {
+                                    $barang->kode_barang = $candidate;
+                                    break;
+                                }
+                                $num++;
                             }
-
-                            $barang->kode_barang = $kodeBaru;
                         }
                     }
                 }
