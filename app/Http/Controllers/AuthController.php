@@ -8,6 +8,7 @@ use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
+use Illuminate\Support\Facades\Storage;
 
 class AuthController extends Controller
 {
@@ -72,25 +73,49 @@ class AuthController extends Controller
             $user = $request->user();
 
             $validated = $request->validate([
-                'name' => ['required', 'string', 'max:255'],
-                'username' => ['required', 'string', 'max:255', 'unique:users,username,' . $user->id],
+                'name'          => ['required', 'string', 'max:255'],
+                'username'      => ['required', 'string', 'max:255', 'unique:users,username,' . $user->id],
+                'gambar'        => ['sometimes', 'file', 'image', 'mimes:jpg,jpeg,png', 'max:2048'],
+                'remove_gambar' => ['sometimes', 'boolean'],
             ]);
 
             $user->name = $validated['name'];
             $user->username = $validated['username'];
+
+            if ($request->boolean('remove_gambar')) {
+                if ($user->gambar) {
+                    Storage::disk('public')->delete('foto_profil/' . $user->gambar);
+                }
+                $user->gambar = null;
+            }
+
+            if ($request->hasFile('gambar')) {
+                if ($user->gambar) {
+                    Storage::disk('public')->delete('foto_profil/' . $user->gambar);
+                }
+
+                $file = $request->file('gambar');
+                $filename = 'pp_' . time() . '_' . uniqid() . '.' . $file->getClientOriginalExtension();
+                Storage::disk('public')->putFileAs('foto_profil', $file, $filename);
+
+                $user->gambar = $filename;
+            }
+
             $user->save();
+
+            $user->gambar_url = $user->gambar ? Storage::url('foto_profil/' . $user->gambar) : null;
 
             return response()->json([
                 'success' => true,
-                'user' => $user,
+                'user'    => $user,
             ]);
-        } catch (\Illuminate\Validation\ValidationException $e) {
+        } catch (ValidationException $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Validasi gagal',
-                'errors' => $e->errors(),
+                'errors'  => $e->errors(),
             ], 422);
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal memperbarui profil',
