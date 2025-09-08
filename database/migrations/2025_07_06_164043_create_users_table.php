@@ -17,6 +17,11 @@ return new class extends Migration
             $table->string('username')->unique();
             $table->string('password');
             $table->string('role')->default('karani');
+            $table->string('gambar')->nullable();
+            $table->foreignId('kota_id')
+                ->nullable()
+                ->constrained('kotas')
+                ->nullOnDelete();
             $table->rememberToken();
             $table->timestamps();
         });

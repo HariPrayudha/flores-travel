@@ -3,7 +3,6 @@
 namespace Database\Seeders;
 
 use App\Models\User;
-// use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 
 class DatabaseSeeder extends Seeder
@@ -13,29 +12,35 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        // User::factory(10)->create();
+        $this->call(KotaSeeder::class);
+
+        $defaultKota = \App\Models\Kota::first();
 
         User::create([
             'name' => 'Admin',
             'username' => 'admin',
             'role' => 'admin',
-            'password' => bcrypt('123')
+            'password' => bcrypt('123'),
+            'gambar' => null,
+            'kota_id' => $defaultKota?->id,
         ]);
 
         User::create([
             'name' => 'Karani 1',
             'username' => 'karani1',
             'role' => 'karani',
-            'password' => bcrypt('123')
+            'password' => bcrypt('123'),
+            'gambar' => null,
+            'kota_id' => $defaultKota?->id,
         ]);
 
         User::create([
             'name' => 'Karani 2',
             'username' => 'karani2',
             'role' => 'karani',
-            'password' => bcrypt('123')
+            'password' => bcrypt('123'),
+            'gambar' => null,
+            'kota_id' => $defaultKota?->id,
         ]);
-
-        $this->call(KotaSeeder::class);
     }
 }

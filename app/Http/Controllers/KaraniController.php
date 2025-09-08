@@ -15,7 +15,9 @@ class KaraniController extends Controller
     public function index()
     {
         try {
-            $karanis = User::where('role', 'karani')->get();
+            $karanis = User::with('kota:id,nama')
+                ->where('role', 'karani')
+                ->get();
 
             return response()->json([
                 'success' => true,
@@ -33,9 +35,10 @@ class KaraniController extends Controller
     {
         try {
             $validated = $request->validate([
-                'name'     => 'required|string|max:255',
-                'username' => 'required|string|unique:users,username',
-                'password' => 'nullable|string|min:6',
+                'name'      => 'required|string|max:255',
+                'username'  => 'required|string|unique:users,username',
+                'password'  => 'nullable|string|min:6',
+                'kota_id'   => 'nullable|exists:kotas,id',
             ]);
 
             $passwordPlain = $validated['password'] ?? $validated['username'];
@@ -45,7 +48,10 @@ class KaraniController extends Controller
                 'username' => $validated['username'],
                 'password' => Hash::make($passwordPlain),
                 'role'     => 'karani',
+                'kota_id'  => $validated['kota_id'] ?? null
             ]);
+
+            $karani->load('kota:id,nama');
 
             return response()->json([
                 'success' => true,
@@ -69,7 +75,9 @@ class KaraniController extends Controller
     public function show($id)
     {
         try {
-            $karani = User::where('role', 'karani')->findOrFail($id);
+            $karani = User::with('kota:id,nama')
+                ->where('role', 'karani')
+                ->findOrFail($id);
 
             return response()->json([
                 'success' => true,
@@ -92,25 +100,29 @@ class KaraniController extends Controller
     {
         try {
             $validated = $request->validate([
-                'name'     => 'required|string|max:255',
-                'username' => [
+                'name'      => 'required|string|max:255',
+                'username'  => [
                     'required',
                     'string',
                     Rule::unique('users', 'username')->ignore($id),
                 ],
-                'password' => 'nullable|string|min:6',
+                'password'  => 'nullable|string|min:6',
+                'kota_id'   => 'nullable|exists:kotas,id',
             ]);
 
             $karani = User::where('role', 'karani')->findOrFail($id);
 
             $karani->name = $validated['name'];
             $karani->username = $validated['username'];
+            $karani->kota_id = $validated['kota_id'] ?? null;
 
             if (!empty($validated['password'])) {
                 $karani->password = Hash::make($validated['password']);
             }
 
             $karani->save();
+
+            $karani->load('kota:id,nama');
 
             return response()->json([
                 'success' => true,
@@ -166,6 +178,8 @@ class KaraniController extends Controller
 
             $karani->password = Hash::make($karani->username);
             $karani->save();
+
+            $karani->load('kota:id,nama');
 
             return response()->json([
                 'success' => true,
