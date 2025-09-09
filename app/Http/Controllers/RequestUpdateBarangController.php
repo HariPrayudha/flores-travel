@@ -268,23 +268,19 @@ class RequestUpdateBarangController extends Controller
                 }
 
                 $curr = $barang->$f;
-
                 $changed = false;
                 switch ($f) {
                     case 'kota_asal':
                     case 'kota_tujuan':
                         $changed = ((int)$curr !== (int)$val);
                         break;
-
                     case 'harga_awal':
                     case 'harga_terbayar':
                         $changed = ((float)$curr !== (float)$val);
                         break;
-
                     case 'status_bayar':
                         $changed = (mb_strtolower(trim((string)$curr)) !== mb_strtolower(trim((string)$val)));
                         break;
-
                     default:
                         $changed = (trim((string)$curr) !== trim((string)$val));
                         break;
@@ -296,6 +292,15 @@ class RequestUpdateBarangController extends Controller
             }
 
             if (!empty($updates)) {
+                if (empty($req->before_values)) {
+                    $before = [];
+                    foreach (array_keys($updates) as $key) {
+                        $before[$key] = $barang->$key;
+                    }
+                    $req->before_values = $before;
+                    $req->save();
+                }
+
                 $updates['user_update'] = $admin?->id;
                 $barang->update($updates);
             }

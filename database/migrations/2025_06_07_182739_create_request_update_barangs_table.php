@@ -27,6 +27,7 @@ return new class extends Migration
             $table->string('status_bayar')->nullable();
             $table->text('alasan')->nullable();
             $table->string('status_update')->default('Pending');
+            $table->json('before_values')->nullable();
             $table->timestamps();
         });
     }
