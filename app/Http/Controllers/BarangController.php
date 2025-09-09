@@ -342,7 +342,7 @@ class BarangController extends Controller
             $barang = Barang::lockForUpdate()->findOrFail($id);
 
             $rules = [
-                'harga_terbayar'     => 'required|numeric|min:0',
+                'harga_terbayar'     => 'nullable|numeric|min:0',
                 'status_bayar'       => 'required|string|in:Lunas,Belum Bayar,Transfer',
                 'catatan_penerimaan' => 'nullable|string',
             ];
