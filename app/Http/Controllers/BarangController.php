@@ -40,6 +40,28 @@ class BarangController extends Controller
     public function store(Request $request)
     {
         try {
+            $user = $request->user();
+            if (!$user) {
+                return response()->json(['success' => false, 'message' => 'Unauthenticated'], 401);
+            }
+
+            if (strtolower($user->role) === 'karani') {
+                if (!$user->kota_id) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Akun tidak memiliki kota. Hubungi admin.'
+                    ], 422);
+                }
+                $request->merge([
+                    'user_id'   => $user->id,
+                    'kota_asal' => $user->kota_id,
+                ]);
+            } else {
+                if (!$request->filled('user_id')) {
+                    $request->merge(['user_id' => $user->id]);
+                }
+            }
+
             $validated = $request->validate([
                 'user_id'               => 'required|exists:users,id',
                 'kota_asal'             => 'required|exists:kotas,id',

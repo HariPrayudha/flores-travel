@@ -41,6 +41,15 @@ class RequestUpdateBarangController extends Controller
     public function store(Request $request)
     {
         try {
+            $user = $request->user();
+            if (!$user) {
+                return response()->json(['success' => false, 'message' => 'Unauthenticated'], 401);
+            }
+
+            if (strtolower($user->role) === 'karani' && $user->kota_id) {
+                $request->merge(['kota_asal' => $user->kota_id]);
+            }
+
             $validated = $request->validate([
                 'barang_id'        => 'required|exists:barangs,id',
                 'kota_asal'        => 'sometimes|nullable|exists:kotas,id',
@@ -56,11 +65,6 @@ class RequestUpdateBarangController extends Controller
                 'alasan'           => 'sometimes|nullable|string',
                 'status_update'    => 'sometimes|nullable|string|in:Pending,Disetujui,Ditolak',
             ]);
-
-            $user = $request->user();
-            if (!$user) {
-                return response()->json(['success' => false, 'message' => 'Unauthenticated'], 401);
-            }
 
             $barang = Barang::findOrFail($validated['barang_id']);
 
