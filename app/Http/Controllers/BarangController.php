@@ -338,8 +338,8 @@ class BarangController extends Controller
     {
         try {
             $validated = $request->validate([
-                'ttd_penerima'        => 'required|image|mimes:jpg,jpeg,png|max:2048',
-                'foto_penerima'       => 'required|image|mimes:jpg,jpeg,png|max:2048',
+                'ttd_penerima'        => 'nullable|image|mimes:jpg,jpeg,png|max:2048',
+                'foto_penerima'       => 'nullable|image|mimes:jpg,jpeg,png|max:2048',
                 'harga_terbayar'      => 'nullable|numeric|min:0',
                 'status_bayar'        => 'required|string|in:Lunas,Belum Bayar,Transfer',
                 'catatan_penerimaan'  => 'nullable|string',
