@@ -337,35 +337,49 @@ class BarangController extends Controller
     public function terimaBarang(Request $request, $id)
     {
         try {
-            $validated = $request->validate([
-                'ttd_penerima'        => 'required|image|mimes:jpg,jpeg,png|max:2048',
-                'foto_penerima'       => 'required|image|mimes:jpg,jpeg,png|max:2048',
-                'harga_terbayar'      => 'required|numeric|min:0',
-                'status_bayar'        => 'required|string|in:Lunas,Belum Bayar,Transfer',
-                'catatan_penerimaan'  => 'nullable|string',
-            ]);
-
             DB::beginTransaction();
 
-            $barang = Barang::findOrFail($id);
+            $barang = Barang::lockForUpdate()->findOrFail($id);
 
-            $ttdFile     = $request->file('ttd_penerima');
-            $ttdFilename = 'ttd_' . time() . '_' . uniqid() . '.' . $ttdFile->getClientOriginalExtension();
-            Storage::disk('public')->putFileAs('foto_barang', $ttdFile, $ttdFilename);
+            $rules = [
+                'harga_terbayar'     => 'required|numeric|min:0',
+                'status_bayar'       => 'required|string|in:Lunas,Belum Bayar,Transfer',
+                'catatan_penerimaan' => 'nullable|string',
+            ];
 
-            $fotoFile     = $request->file('foto_penerima');
-            $fotoFilename = 'foto_' . time() . '_' . uniqid() . '.' . $fotoFile->getClientOriginalExtension();
-            Storage::disk('public')->putFileAs('foto_barang', $fotoFile, $fotoFilename);
+            $rules['ttd_penerima']  = ($barang->ttd_penerima  ? 'sometimes' : 'required') . '|image|mimes:jpg,jpeg,png|max:2048';
+            $rules['foto_penerima'] = ($barang->foto_penerima ? 'sometimes' : 'required') . '|image|mimes:jpg,jpeg,png|max:2048';
 
-            $barang->update([
-                'status_barang'       => 'Diterima',
-                'tanggal_terima'      => now(),
-                'ttd_penerima'        => $ttdFilename,
-                'foto_penerima'       => $fotoFilename,
-                'harga_terbayar'      => $validated['harga_terbayar'],
-                'status_bayar'        => $validated['status_bayar'],
-                'catatan_penerimaan'  => $validated['catatan_penerimaan'] ?? null,
-            ]);
+            $validated = $request->validate($rules);
+
+            if ($request->hasFile('ttd_penerima')) {
+                if ($barang->ttd_penerima) {
+                    Storage::disk('public')->delete('foto_barang/' . $barang->ttd_penerima);
+                }
+                $ttdFile     = $request->file('ttd_penerima');
+                $ttdFilename = 'ttd_' . time() . '_' . uniqid() . '.' . $ttdFile->getClientOriginalExtension();
+                Storage::disk('public')->putFileAs('foto_barang', $ttdFile, $ttdFilename);
+                $barang->ttd_penerima = $ttdFilename;
+            }
+
+            if ($request->hasFile('foto_penerima')) {
+                if ($barang->foto_penerima) {
+                    Storage::disk('public')->delete('foto_barang/' . $barang->foto_penerima);
+                }
+                $fotoFile     = $request->file('foto_penerima');
+                $fotoFilename = 'foto_' . time() . '_' . uniqid() . '.' . $fotoFile->getClientOriginalExtension();
+                Storage::disk('public')->putFileAs('foto_barang', $fotoFile, $fotoFilename);
+                $barang->foto_penerima = $fotoFilename;
+            }
+
+            $barang->status_barang       = 'Diterima';
+            if (!$barang->tanggal_terima) {
+                $barang->tanggal_terima = now();
+            }
+            $barang->harga_terbayar      = $validated['harga_terbayar'];
+            $barang->status_bayar        = $validated['status_bayar'];
+            $barang->catatan_penerimaan  = $validated['catatan_penerimaan'] ?? $barang->catatan_penerimaan;
+            $barang->save();
 
             DB::commit();
 
@@ -373,8 +387,8 @@ class BarangController extends Controller
                 'success' => true,
                 'message' => 'Barang berhasil ditandai sebagai diterima.',
                 'data'    => array_merge($barang->toArray(), [
-                    'foto_penerima_url' => Storage::url('foto_barang/' . $fotoFilename),
-                    'ttd_penerima_url'  => Storage::url('foto_barang/' . $ttdFilename),
+                    'foto_penerima_url' => $barang->foto_penerima ? Storage::url('foto_barang/' . $barang->foto_penerima) : null,
+                    'ttd_penerima_url'  => $barang->ttd_penerima  ? Storage::url('foto_barang/' . $barang->ttd_penerima)  : null,
                 ]),
             ], 200);
         } catch (ValidationException $e) {
@@ -384,7 +398,7 @@ class BarangController extends Controller
                 'message' => $e->getMessage(),
                 'errors'  => $e->errors()
             ], 422);
-        } catch (Exception $e) {
+        } catch (\Throwable $e) {
             DB::rollBack();
             return response()->json([
                 'success' => false,
