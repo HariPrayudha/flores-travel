@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\Notification;
 use Exception;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Facades\DB;
 
@@ -197,9 +198,9 @@ class RequestUpdateBarangController extends Controller
     {
         try {
             $requestUpdate = RequestUpdateBarang::findOrFail($id);
-            $user = auth()->user();
+            $user = Auth::user();
 
-            if ($requestUpdate->user_id != $user->id && $user->role != 'admin') {
+            if ($requestUpdate->user_id != $user->id && ($user->role ?? '') !== 'admin') {
                 return response()->json([
                     'success' => false,
                     'message' => 'Anda tidak memiliki izin untuk menghapus data ini.'
@@ -217,11 +218,64 @@ class RequestUpdateBarangController extends Controller
                 'success' => false,
                 'message' => 'Request Update Barang tidak ditemukan.'
             ], 404);
-        } catch (Exception $e) {
+        } catch (\Throwable $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal menghapus Request Update barang.',
                 'error'   => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function bulkDestroy(Request $request)
+    {
+        $request->validate([
+            'ids'   => ['required', 'array', 'min:1'],
+            'ids.*' => ['integer'],
+        ], [
+            'ids.required' => 'Daftar id wajib diisi.',
+            'ids.array'    => 'Format ids tidak valid.',
+            'ids.min'      => 'Pilih minimal 1 data untuk dihapus.',
+        ]);
+
+        $user = Auth::user();
+        $ids  = array_values(array_unique(array_map('intval', $request->input('ids', []))));
+
+        try {
+            DB::beginTransaction();
+
+            $existingIds = RequestUpdateBarang::whereIn('id', $ids)->pluck('id')->all();
+            $notFoundIds = array_values(array_diff($ids, $existingIds));
+
+            $allowedQuery = RequestUpdateBarang::whereIn('id', $existingIds);
+            if (($user->role ?? '') !== 'admin') {
+                $allowedQuery->where('user_id', $user->id);
+            }
+            $allowedIds = $allowedQuery->pluck('id')->all();
+
+            $notAllowedIds = array_values(array_diff($existingIds, $allowedIds));
+
+            $deletedCount = 0;
+            if (!empty($allowedIds)) {
+                $deletedCount = RequestUpdateBarang::whereIn('id', $allowedIds)->delete();
+            }
+
+            DB::commit();
+
+            return response()->json([
+                'success'         => true,
+                'message'         => $deletedCount > 0 ? 'Sebagian/seluruh data berhasil dihapus.' : 'Tidak ada data yang dihapus.',
+                'deleted_count'   => (int) $deletedCount,
+                'deleted_ids'     => array_values($allowedIds),
+                'not_found_ids'   => $notFoundIds,
+                'not_allowed_ids' => $notAllowedIds,
+            ], 200);
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal menghapus data.',
+                'error'   => $e->getMessage(),
             ], 500);
         }
     }

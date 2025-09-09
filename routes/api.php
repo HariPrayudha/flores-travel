@@ -37,6 +37,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/kota', [KotaController::class, 'index']);
     Route::apiResource('/barang', BarangController::class);
     Route::apiResource('/update-barang', RequestUpdateBarangController::class);
+    Route::post('/update-barang/bulk-delete', [RequestUpdateBarangController::class, 'bulkDestroy']);
 
     Route::put('/barang/{id}/update-status', [BarangController::class, 'terimaBarang']);
 });
