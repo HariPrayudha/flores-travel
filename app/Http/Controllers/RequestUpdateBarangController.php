@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreRequestUpdateBarangRequest;
 use App\Http\Requests\UpdateRequestUpdateBarangRequest;
 use App\Models\Barang;
+use App\Models\Kota;
 use App\Models\User;
 use App\Notifications\RequestUpdateBarangCreated;
 use App\Notifications\RequestUpdateStatusChanged;
@@ -263,9 +264,7 @@ class RequestUpdateBarangController extends Controller
             foreach ($fields as $f) {
                 $val = $req->$f;
 
-                if (is_null($val) || (is_string($val) && trim($val) === '')) {
-                    continue;
-                }
+                if (is_null($val) || (is_string($val) && trim($val) === '')) continue;
 
                 $curr = $barang->$f;
                 $changed = false;
@@ -286,23 +285,51 @@ class RequestUpdateBarangController extends Controller
                         break;
                 }
 
-                if ($changed) {
-                    $updates[$f] = $val;
+                if ($changed) $updates[$f] = $val;
+            }
+
+            if (!empty($updates) && empty($req->before_values)) {
+                $before = [];
+                foreach (array_keys($updates) as $key) {
+                    $before[$key] = $barang->$key;
+                }
+                $req->before_values = $before;
+                $req->save();
+            }
+
+            if (array_key_exists('kota_tujuan', $updates)) {
+                $kotaBaruId = $updates['kota_tujuan'];
+                $namaKotaBaru = Kota::where('id', $kotaBaruId)->value('nama');
+                $prefixBaru = $namaKotaBaru ? mb_substr($namaKotaBaru, 0, 1) : 'X';
+
+                $parts = explode('-', (string)$barang->kode_barang, 3);
+                if (count($parts) === 3) {
+                    [$oldPrefix, $oldTanggal, $oldNomor] = $parts;
+
+                    if ($prefixBaru !== $oldPrefix) {
+                        $num = (int) $oldNomor;
+                        while (true) {
+                            $numStr = str_pad($num, 3, '0', STR_PAD_LEFT);
+                            $candidate = "{$prefixBaru}-{$oldTanggal}-{$numStr}";
+
+                            $exists = Barang::where('kode_barang', $candidate)
+                                ->where('id', '!=', $barang->id)
+                                ->exists();
+
+                            if (!$exists) {
+                                $barang->kode_barang = $candidate;
+                                break;
+                            }
+                            $num++;
+                        }
+                    }
                 }
             }
 
             if (!empty($updates)) {
-                if (empty($req->before_values)) {
-                    $before = [];
-                    foreach (array_keys($updates) as $key) {
-                        $before[$key] = $barang->$key;
-                    }
-                    $req->before_values = $before;
-                    $req->save();
-                }
-
                 $updates['user_update'] = $admin?->id;
-                $barang->update($updates);
+                $barang->fill($updates);
+                $barang->save();
             }
 
             $req->status_update = 'Disetujui';
