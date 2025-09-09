@@ -23,12 +23,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/notifications/bulk-delete', [NotificationController::class, 'bulkDestroy']);
 
     Route::post('/save-push-token', [NotificationController::class, 'savePushToken'])
-        ->withoutMiddleware('throttle:api')
-        ->middleware('throttle:push-tokens');
+        ->withoutMiddleware('throttle:api');
 
     Route::post('/delete-push-token', [NotificationController::class, 'deleteOwnToken'])
-        ->withoutMiddleware('throttle:api')
-        ->middleware('throttle:push-tokens');
+        ->withoutMiddleware('throttle:api');
 
     Route::middleware('can:isAdmin')->group(function () {
         Route::apiResource('/karani', KaraniController::class);
