@@ -232,12 +232,10 @@ class RequestUpdateBarangController extends Controller
 
             DB::beginTransaction();
 
-            // Lock request + eager load relasi untuk dipakai setelahnya
             $req = RequestUpdateBarang::lockForUpdate()
                 ->with(['barang', 'user'])
                 ->findOrFail($id);
 
-            // Hanya boleh diproses kalau masih pending / null
             if ($req->status_update && strtolower($req->status_update) !== 'pending') {
                 DB::rollBack();
                 return response()->json([
@@ -246,30 +244,67 @@ class RequestUpdateBarangController extends Controller
                 ], 409);
             }
 
-            // Lock barang agar konsisten
             $barang = Barang::lockForUpdate()->findOrFail($req->barang_id);
 
-            // Terapkan perubahan dari request ke barang
-            $barang->update([
-                'kota_asal'        => $req->kota_asal,
-                'kota_tujuan'      => $req->kota_tujuan,
-                'deskripsi_barang' => $req->deskripsi_barang,
-                'nama_pengirim'    => $req->nama_pengirim,
-                'hp_pengirim'      => $req->hp_pengirim,
-                'nama_penerima'    => $req->nama_penerima,
-                'hp_penerima'      => $req->hp_penerima,
-                'harga_awal'       => $req->harga_awal,
-                'status_bayar'     => $req->status_bayar,
-                'user_update'      => $admin?->id,
-            ]);
+            $fields = [
+                'kota_asal',
+                'kota_tujuan',
+                'deskripsi_barang',
+                'nama_pengirim',
+                'hp_pengirim',
+                'nama_penerima',
+                'hp_penerima',
+                'harga_awal',
+                'harga_terbayar',
+                'status_bayar',
+            ];
 
-            // Update status request
+            $updates = [];
+            foreach ($fields as $f) {
+                $val = $req->$f;
+
+                if (is_null($val) || (is_string($val) && trim($val) === '')) {
+                    continue;
+                }
+
+                $curr = $barang->$f;
+
+                $changed = false;
+                switch ($f) {
+                    case 'kota_asal':
+                    case 'kota_tujuan':
+                        $changed = ((int)$curr !== (int)$val);
+                        break;
+
+                    case 'harga_awal':
+                    case 'harga_terbayar':
+                        $changed = ((float)$curr !== (float)$val);
+                        break;
+
+                    case 'status_bayar':
+                        $changed = (mb_strtolower(trim((string)$curr)) !== mb_strtolower(trim((string)$val)));
+                        break;
+
+                    default:
+                        $changed = (trim((string)$curr) !== trim((string)$val));
+                        break;
+                }
+
+                if ($changed) {
+                    $updates[$f] = $val;
+                }
+            }
+
+            if (!empty($updates)) {
+                $updates['user_update'] = $admin?->id;
+                $barang->update($updates);
+            }
+
             $req->status_update = 'Disetujui';
             $req->save();
 
             DB::commit();
 
-            // Kirim notifikasi ke karani (pemilik pengajuan)
             if ($req->user_id) {
                 $karani = User::find($req->user_id);
                 if ($karani) {
