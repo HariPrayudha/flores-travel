@@ -46,13 +46,17 @@ class RequestUpdateBarangController extends Controller
                 return response()->json(['success' => false, 'message' => 'Unauthenticated'], 401);
             }
 
-            if (strtolower($user->role) === 'karani' && $user->kota_id) {
+            $isKarani = strtolower($user->role) === 'karani';
+            $useUserKotaAsal = $request->boolean('use_user_kota_asal');
+            if ($isKarani && $user->kota_id && $useUserKotaAsal) {
                 $request->merge(['kota_asal' => $user->kota_id]);
             }
 
             $validated = $request->validate([
                 'barang_id'        => 'required|exists:barangs,id',
-                'kota_asal'        => 'sometimes|nullable|exists:kotas,id',
+                'use_user_kota_asal' => 'sometimes|boolean',
+                'kota_asal'          => 'exclude_unless:use_user_kota_asal,1|nullable|exists:kotas,id',
+
                 'kota_tujuan'      => 'sometimes|nullable|exists:kotas,id',
                 'deskripsi_barang' => 'sometimes|nullable|string',
                 'nama_pengirim'    => 'sometimes|nullable|string|max:255',
@@ -79,30 +83,35 @@ class RequestUpdateBarangController extends Controller
                 'harga_awal',
                 'harga_terbayar',
                 'status_bayar',
-                'alasan'
+                'alasan',
             ];
-            $hasAny = collect($updatableKeys)->some(fn($k) => $request->has($k));
 
-            if (!$hasAny) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Tidak ada perubahan yang diajukan.',
-                    'errors'  => ['fields' => ['Minimal satu field harus diisi untuk request update.']]
-                ], 422);
-            }
-
-            $data = [
-                'user_id'       => $user->id,
-                'barang_id'     => $barang->id,
-                'status_update' => 'Pending',
-            ];
+            $changes = [];
             foreach ($updatableKeys as $k) {
                 if (array_key_exists($k, $validated)) {
-                    $data[$k] = $validated[$k];
+                    $new = $validated[$k];
+                    $old = $barang->{$k};
+
+                    $isSame = (is_null($new) && is_null($old)) || ((string)$new === (string)$old);
+                    if (!$isSame) {
+                        $changes[$k] = $new;
+                    }
                 }
             }
 
-            $reqUpdate = RequestUpdateBarang::create($data);
+            if (empty($changes)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Tidak ada perubahan yang diajukan.',
+                    'errors'  => ['fields' => ['Minimal satu field harus diisi/berubah untuk request update.']]
+                ], 422);
+            }
+
+            $reqUpdate = RequestUpdateBarang::create(array_merge([
+                'user_id'       => $user->id,
+                'barang_id'     => $barang->id,
+                'status_update' => 'Pending',
+            ], $changes));
 
             $admins = User::where('role', 'admin')->get();
             Notification::send($admins, new RequestUpdateBarangCreated($reqUpdate));
