@@ -40,6 +40,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::get('/kota', [KotaController::class, 'index']);
     Route::apiResource('/barang', BarangController::class);
+    Route::get('/barang/by-kode/{kode}', [BarangController::class, 'findByKode']);
     Route::apiResource('/update-barang', RequestUpdateBarangController::class);
     Route::post('/update-barang/bulk-delete', [RequestUpdateBarangController::class, 'bulkDestroy']);
 

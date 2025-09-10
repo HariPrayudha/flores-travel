@@ -504,4 +504,34 @@ class BarangController extends Controller
             return response()->json(['success' => false, 'message' => 'Gagal menghapus data.', 'error' => $e->getMessage()], 500);
         }
     }
+
+    public function findByKode(string $kode)
+    {
+        try {
+            $norm = strtoupper(preg_replace('/\s+/', '', $kode));
+
+            $barang = Barang::query()
+                ->select('id', 'kode_barang', 'status_barang')
+                ->whereRaw("REPLACE(UPPER(kode_barang), ' ', '') = ?", [$norm])
+                ->first();
+
+            if (!$barang) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Barang not found',
+                ], 404);
+            }
+
+            return response()->json([
+                'success' => true,
+                'data'    => $barang,
+            ], 200);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to fetch barang by kode',
+                'error'   => $e->getMessage(),
+            ], 500);
+        }
+    }
 }
