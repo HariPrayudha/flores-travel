@@ -20,7 +20,7 @@ return new class extends Migration
             $table->foreignId('kota_tujuan');
             $table->text('deskripsi_barang');
             $table->string('nama_pengirim');
-            $table->string('hp_pengirim');
+            $table->string('hp_pengirim')->nullable();
             $table->string('nama_penerima');
             $table->string('hp_penerima');
             $table->decimal('harga_awal');
@@ -29,6 +29,9 @@ return new class extends Migration
             $table->date('tanggal_terima')->nullable();
             $table->string('ttd_penerima')->nullable();
             $table->string('foto_penerima')->nullable();
+            $table->string('bukti_transfer')->nullable();
+            $table->boolean('paket_antar')->default(false);
+            $table->text('alamat')->nullable();
             $table->string('status_bayar')->default("Belum Bayar");
             $table->string('status_barang')->default("Belum Diterima");
             $table->text('catatan_pengiriman')->nullable();
