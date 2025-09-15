@@ -206,33 +206,64 @@ class BarangController extends Controller
     {
         try {
             $validated = $request->validate([
-                'kota_asal'           => 'nullable|exists:kotas,id',
-                'kota_tujuan'         => 'nullable|exists:kotas,id',
-                'deskripsi_barang'    => 'nullable|string',
-                'nama_pengirim'       => 'nullable|string|max:255',
-                'hp_pengirim'         => 'nullable|string|max:20',
-                'nama_penerima'       => 'nullable|string|max:255',
-                'hp_penerima'         => 'nullable|string|max:20',
-                'harga_awal'          => 'nullable|numeric|min:0',
-                'status_bayar'        => 'nullable|string|in:Lunas,Belum Bayar,Transfer',
-                'status_barang'       => 'nullable|string|in:Diterima,Belum Diterima',
-                'foto_barang.*'       => 'sometimes|image|mimes:jpg,jpeg,png|max:4096',
-                'foto_penerima'       => 'sometimes|image|mimes:jpg,jpeg,png|max:4096',
-                'ttd_penerima'        => 'sometimes|image|mimes:jpg,jpeg,png|max:4096',
-                'bukti_transfer'      => 'required_if:status_bayar,Transfer|image|mimes:jpg,jpeg,png|max:4096',
-                'delete_foto_ids'     => ['nullable', 'array'],
-                'delete_foto_ids.*'   => ['integer', 'exists:foto_barangs,id'],
-                'clear_foto_penerima' => 'nullable|boolean',
-                'clear_ttd_penerima'  => 'nullable|boolean',
+                'kota_asal'            => 'nullable|exists:kotas,id',
+                'kota_tujuan'          => 'nullable|exists:kotas,id',
+                'deskripsi_barang'     => 'nullable|string',
+                'nama_pengirim'        => 'nullable|string|max:255',
+                'hp_pengirim'          => 'nullable|string|max:20',
+                'nama_penerima'        => 'nullable|string|max:255',
+                'hp_penerima'          => 'nullable|string|max:20',
+                'harga_awal'           => 'nullable|numeric|min:0',
+                'status_bayar'         => 'nullable|string|in:Lunas,Belum Bayar,Transfer',
+                'status_barang'        => 'nullable|string|in:Diterima,Belum Diterima',
+                'foto_barang.*'        => 'sometimes|image|mimes:jpg,jpeg,png|max:4096',
+                'foto_penerima'        => 'sometimes|image|mimes:jpg,jpeg,png|max:4096',
+                'ttd_penerima'         => 'sometimes|image|mimes:jpg,jpeg,png|max:4096',
+                'bukti_transfer'       => 'nullable|image|mimes:jpg,jpeg,png|max:4096',
+                'delete_foto_ids'      => ['nullable', 'array'],
+                'delete_foto_ids.*'    => ['integer', 'exists:foto_barangs,id'],
+                'clear_foto_penerima'  => 'nullable|boolean',
+                'clear_ttd_penerima'   => 'nullable|boolean',
                 'clear_bukti_transfer' => 'nullable|boolean',
-                'paket_antar'         => 'sometimes|boolean',
-                'alamat'              => 'required_if:paket_antar,1|string|nullable',
-                'catatan_pengiriman'  => 'nullable|string',
+                'paket_antar'          => 'sometimes|boolean',
+                'alamat'               => 'nullable|string',
+                'catatan_pengiriman'   => 'nullable|string',
             ]);
 
             DB::beginTransaction();
 
             $barang = Barang::with('fotoBarang')->lockForUpdate()->findOrFail($id);
+
+            $effectiveStatus = $request->has('status_bayar')
+                ? ($validated['status_bayar'] ?? null)
+                : $barang->status_bayar;
+
+            $hasExistingBukti = !empty($barang->bukti_transfer);
+            $hasNewBukti      = $request->hasFile('bukti_transfer');
+            $clearBukti       = $request->boolean('clear_bukti_transfer');
+
+            if ($effectiveStatus === 'Transfer') {
+                if (!$hasExistingBukti && !$hasNewBukti) {
+                    throw ValidationException::withMessages([
+                        'bukti_transfer' => 'Bukti transfer wajib diunggah saat status bayar "Transfer".',
+                    ]);
+                }
+                if ($clearBukti && !$hasNewBukti) {
+                    throw ValidationException::withMessages([
+                        'bukti_transfer' => 'Anda menghapus bukti lama. Unggah bukti transfer baru atau batalkan penghapusan.',
+                    ]);
+                }
+            }
+
+            $paketAntarEff = $request->has('paket_antar')
+                ? $request->boolean('paket_antar')
+                : (bool) $barang->paket_antar;
+
+            if ($paketAntarEff && !$request->filled('alamat')) {
+                throw ValidationException::withMessages([
+                    'alamat' => 'Alamat wajib diisi saat paket antar diaktifkan.',
+                ]);
+            }
 
             if ($request->has('kota_tujuan')) {
                 $kotaBaruId = $validated['kota_tujuan'] ?? null;
@@ -240,7 +271,7 @@ class BarangController extends Controller
                     $namaKotaBaru = Kota::where('id', $kotaBaruId)->value('nama');
                     $prefixBaru = $namaKotaBaru ? mb_substr($namaKotaBaru, 0, 1) : 'X';
 
-                    $parts = explode('-', (string)$barang->kode_barang, 3);
+                    $parts = explode('-', (string) $barang->kode_barang, 3);
                     if (count($parts) === 3) {
                         [$oldPrefix, $oldTanggal, $oldNomor] = $parts;
                         if ($prefixBaru !== $oldPrefix) {
@@ -347,11 +378,7 @@ class BarangController extends Controller
                 $barang->save();
             }
 
-            $newStatus = $request->has('status_bayar')
-                ? ($validated['status_bayar'] ?? null)
-                : $barang->status_bayar;
-
-            if ($newStatus !== 'Transfer') {
+            if ($effectiveStatus !== 'Transfer') {
                 if ($barang->bukti_transfer) {
                     Storage::disk('public')->delete('bukti_transfer/' . $barang->bukti_transfer);
                     $barang->bukti_transfer = null;
