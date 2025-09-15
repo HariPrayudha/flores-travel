@@ -447,9 +447,10 @@ class BarangController extends Controller
                 'status_bayar'       => 'required|string|in:Lunas,Belum Bayar,Transfer',
                 'catatan_penerimaan' => 'nullable|string',
             ];
-
             $rules['ttd_penerima']  = ($barang->ttd_penerima  ? 'sometimes' : 'required') . '|image|mimes:jpg,jpeg,png|max:2048';
             $rules['foto_penerima'] = ($barang->foto_penerima ? 'sometimes' : 'required') . '|image|mimes:jpg,jpeg,png|max:2048';
+            $rules['bukti_transfer']       = 'nullable|image|mimes:jpg,jpeg,png|max:4096';
+            $rules['clear_bukti_transfer'] = 'nullable|boolean';
 
             $validated = $request->validate($rules);
 
@@ -473,13 +474,51 @@ class BarangController extends Controller
                 $barang->foto_penerima = $fotoFilename;
             }
 
-            $barang->status_barang       = 'Diterima';
+            $barang->status_barang  = 'Diterima';
             if (!$barang->tanggal_terima) {
                 $barang->tanggal_terima = now();
             }
-            $barang->harga_terbayar      = $validated['harga_terbayar'];
-            $barang->status_bayar        = $validated['status_bayar'];
-            $barang->catatan_penerimaan  = $validated['catatan_penerimaan'] ?? $barang->catatan_penerimaan;
+            $barang->harga_terbayar     = $validated['harga_terbayar'];
+            $barang->status_bayar       = $validated['status_bayar'];
+            $barang->catatan_penerimaan = $validated['catatan_penerimaan'] ?? $barang->catatan_penerimaan;
+
+            $effectiveStatus = $validated['status_bayar'];
+            $hasExistingBukti = !empty($barang->bukti_transfer);
+            $hasNewBukti      = $request->hasFile('bukti_transfer');
+            $clearBukti       = $request->boolean('clear_bukti_transfer');
+
+            if ($effectiveStatus === 'Transfer') {
+                if (!$hasExistingBukti && !$hasNewBukti) {
+                    throw ValidationException::withMessages([
+                        'bukti_transfer' => 'Bukti transfer wajib diunggah saat status bayar "Transfer".',
+                    ]);
+                }
+                if ($clearBukti && !$hasNewBukti) {
+                    throw ValidationException::withMessages([
+                        'bukti_transfer' => 'Anda menghapus bukti lama. Unggah bukti transfer baru atau batalkan penghapusan.',
+                    ]);
+                }
+
+                if ($clearBukti && $hasExistingBukti) {
+                    Storage::disk('public')->delete('bukti_transfer/' . $barang->bukti_transfer);
+                    $barang->bukti_transfer = null;
+                }
+                if ($hasNewBukti) {
+                    if ($hasExistingBukti) {
+                        Storage::disk('public')->delete('bukti_transfer/' . $barang->bukti_transfer);
+                    }
+                    $bt = $request->file('bukti_transfer');
+                    $btName = 'bukti_' . time() . '_' . uniqid() . '.' . $bt->getClientOriginalExtension();
+                    Storage::disk('public')->putFileAs('bukti_transfer', $bt, $btName);
+                    $barang->bukti_transfer = $btName;
+                }
+            } else {
+                if ($hasExistingBukti) {
+                    Storage::disk('public')->delete('bukti_transfer/' . $barang->bukti_transfer);
+                    $barang->bukti_transfer = null;
+                }
+            }
+
             $barang->save();
 
             DB::commit();
@@ -488,8 +527,9 @@ class BarangController extends Controller
                 'success' => true,
                 'message' => 'Barang berhasil ditandai sebagai diterima.',
                 'data'    => array_merge($barang->toArray(), [
-                    'foto_penerima_url' => $barang->foto_penerima ? Storage::url('foto_barang/' . $barang->foto_penerima) : null,
-                    'ttd_penerima_url'  => $barang->ttd_penerima  ? Storage::url('foto_barang/' . $barang->ttd_penerima)  : null,
+                    'foto_penerima_url'  => $barang->foto_penerima ? Storage::url('foto_barang/' . $barang->foto_penerima) : null,
+                    'ttd_penerima_url'   => $barang->ttd_penerima  ? Storage::url('foto_barang/' . $barang->ttd_penerima)  : null,
+                    'bukti_transfer_url' => $barang->bukti_transfer ? Storage::url('bukti_transfer/' . $barang->bukti_transfer) : null,
                 ]),
             ], 200);
         } catch (ValidationException $e) {
