@@ -73,9 +73,9 @@ class BarangController extends Controller
                 'hp_penerima'      => 'required|string|max:20',
                 'harga_awal'       => 'required|numeric|min:0',
                 'status_bayar'     => 'required|string|in:Lunas,Belum Bayar,Transfer',
-                'status_barang'    => 'required|string|in:Diterima,Belum Diterima',
+                'status_barang'    => 'required|string|in:Diterima,Belum Diterima,Dibatalkan',
                 'foto_barang.*'    => 'sometimes|image|mimes:jpg,jpeg,png|max:4096',
-                'bukti_transfer' => 'required_if:status_bayar,Transfer|image|mimes:jpg,jpeg,png|max:4096',
+                'bukti_transfer'   => 'required_if:status_bayar,Transfer|image|mimes:jpg,jpeg,png|max:4096',
                 'paket_antar'      => 'sometimes|boolean',
                 'alamat'           => 'required_if:paket_antar,1|string',
                 'catatan_pengiriman' => 'nullable|string',
@@ -215,7 +215,7 @@ class BarangController extends Controller
                 'hp_penerima'          => 'nullable|string|max:20',
                 'harga_awal'           => 'nullable|numeric|min:0',
                 'status_bayar'         => 'nullable|string|in:Lunas,Belum Bayar,Transfer',
-                'status_barang'        => 'nullable|string|in:Diterima,Belum Diterima',
+                'status_barang'        => 'nullable|string|in:Diterima,Belum Diterima,Dibatalkan',
                 'foto_barang.*'        => 'sometimes|image|mimes:jpg,jpeg,png|max:4096',
                 'foto_penerima'        => 'sometimes|image|mimes:jpg,jpeg,png|max:4096',
                 'ttd_penerima'         => 'sometimes|image|mimes:jpg,jpeg,png|max:4096',
@@ -431,6 +431,56 @@ class BarangController extends Controller
                 'success' => false,
                 'message' => 'Gagal mengupdate data.',
                 'error'   => $e->getMessage()
+            ], 500);
+        }
+    }
+    
+    public function batalkan(Request $request, $id)
+    {
+        try {
+            DB::beginTransaction();
+
+            $barang = Barang::lockForUpdate()->findOrFail($id);
+
+            if ($barang->status_barang === 'Diterima') {
+                DB::rollBack();
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Pesanan sudah diterima dan tidak dapat dibatalkan.',
+                ], 422);
+            }
+
+            if ($barang->status_barang === 'Dibatalkan') {
+                DB::rollBack();
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Pesanan sudah dibatalkan sebelumnya.',
+                ], 422);
+            }
+
+            $barang->status_barang = 'Dibatalkan';
+            $barang->user_update   = $request->user()?->id ?? $barang->user_update;
+            $barang->save();
+
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Pesanan berhasil dibatalkan.',
+                'data'    => $barang,
+            ], 200);
+        } catch (ModelNotFoundException $e) {
+            DB::rollBack();
+            return response()->json([
+                'success' => false,
+                'message' => 'Barang tidak ditemukan.',
+            ], 404);
+        } catch (Exception $e) {
+            DB::rollBack();
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal membatalkan pesanan.',
+                'error'   => $e->getMessage(),
             ], 500);
         }
     }

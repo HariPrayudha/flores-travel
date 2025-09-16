@@ -45,4 +45,5 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/update-barang/bulk-delete', [RequestUpdateBarangController::class, 'bulkDestroy']);
 
     Route::put('/barang/{id}/update-status', [BarangController::class, 'terimaBarang']);
+    Route::put('/barang/{id}/batalkan', [BarangController::class, 'batalkan']);
 });
