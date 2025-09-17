@@ -30,6 +30,7 @@ return new class extends Migration
             $table->string('ttd_penerima')->nullable();
             $table->string('foto_penerima')->nullable();
             $table->string('bukti_transfer')->nullable();
+            $table->string('bukti_pembatalan')->nullable();
             $table->boolean('paket_antar')->default(false);
             $table->text('alamat')->nullable();
             $table->string('status_bayar')->default("Belum Bayar");

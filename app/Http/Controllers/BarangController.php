@@ -178,12 +178,10 @@ class BarangController extends Controller
             foreach ($barang->fotoBarang as $f) {
                 $f->url = Storage::url('foto_barang/' . $f->nama_file);
             }
-            $barang->foto_penerima_url = $barang->foto_penerima
-                ? Storage::url('foto_barang/' . $barang->foto_penerima)
-                : null;
-            $barang->ttd_penerima_url = $barang->ttd_penerima
-                ? Storage::url('foto_barang/' . $barang->ttd_penerima)
-                : null;
+            $barang->foto_penerima_url  = $barang->foto_penerima ? Storage::url('foto_barang/' . $barang->foto_penerima) : null;
+            $barang->ttd_penerima_url   = $barang->ttd_penerima ? Storage::url('foto_barang/' . $barang->ttd_penerima) : null;
+            $barang->bukti_transfer_url = $barang->bukti_transfer ? Storage::url('bukti_transfer/' . $barang->bukti_transfer) : null;
+            $barang->bukti_pembatalan_url = $barang->bukti_pembatalan ? Storage::url('bukti_pembatalan/' . $barang->bukti_pembatalan) : null;
 
             return response()->json([
                 'success' => true,
@@ -434,7 +432,7 @@ class BarangController extends Controller
             ], 500);
         }
     }
-    
+
     public function batalkan(Request $request, $id)
     {
         try {
@@ -458,6 +456,20 @@ class BarangController extends Controller
                 ], 422);
             }
 
+            $validated = $request->validate([
+                'bukti_pembatalan' => 'required|image|mimes:jpg,jpeg,png|max:4096',
+            ]);
+
+            if ($request->hasFile('bukti_pembatalan')) {
+                if ($barang->bukti_pembatalan) {
+                    Storage::disk('public')->delete('bukti_pembatalan/' . $barang->bukti_pembatalan);
+                }
+                $bp = $request->file('bukti_pembatalan');
+                $bpName = 'batal_' . time() . '_' . uniqid() . '.' . $bp->getClientOriginalExtension();
+                Storage::disk('public')->putFileAs('bukti_pembatalan', $bp, $bpName);
+                $barang->bukti_pembatalan = $bpName;
+            }
+
             $barang->status_barang = 'Dibatalkan';
             $barang->user_update   = $request->user()?->id ?? $barang->user_update;
             $barang->save();
@@ -467,7 +479,9 @@ class BarangController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Pesanan berhasil dibatalkan.',
-                'data'    => $barang,
+                'data'    => array_merge($barang->toArray(), [
+                    'bukti_pembatalan_url' => $barang->bukti_pembatalan ? Storage::url('bukti_pembatalan/' . $barang->bukti_pembatalan) : null,
+                ]),
             ], 200);
         } catch (ModelNotFoundException $e) {
             DB::rollBack();
@@ -475,6 +489,13 @@ class BarangController extends Controller
                 'success' => false,
                 'message' => 'Barang tidak ditemukan.',
             ], 404);
+        } catch (ValidationException $e) {
+            DB::rollBack();
+            return response()->json([
+                'success' => false,
+                'message' => 'Validasi gagal.',
+                'errors'  => $e->errors(),
+            ], 422);
         } catch (Exception $e) {
             DB::rollBack();
             return response()->json([
@@ -625,6 +646,9 @@ class BarangController extends Controller
             if ($barang->bukti_transfer) {
                 Storage::disk('public')->delete('bukti_transfer/' . $barang->bukti_transfer);
             }
+            if ($barang->bukti_pembatalan) {
+                Storage::disk('public')->delete('bukti_pembatalan/' . $barang->bukti_pembatalan);
+            }
 
             $barang->delete();
 
@@ -668,6 +692,9 @@ class BarangController extends Controller
                 }
                 if ($barang->bukti_transfer) {
                     Storage::disk('public')->delete('bukti_transfer/' . $barang->bukti_transfer);
+                }
+                if ($barang->bukti_pembatalan) {
+                    Storage::disk('public')->delete('bukti_pembatalan/' . $barang->bukti_pembatalan);
                 }
 
                 $barang->delete();
