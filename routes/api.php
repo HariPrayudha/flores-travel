@@ -46,4 +46,5 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::put('/barang/{id}/update-status', [BarangController::class, 'terimaBarang']);
     Route::put('/barang/{id}/batalkan', [BarangController::class, 'batalkan']);
+    Route::post('/barang/export-supir', [BarangController::class, 'exportSupir']);
 });
