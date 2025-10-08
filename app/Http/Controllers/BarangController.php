@@ -514,15 +514,20 @@ class BarangController extends Controller
 
             $barang = Barang::lockForUpdate()->findOrFail($id);
 
+            $lockedTransfer = strcasecmp($barang->status_bayar, 'Transfer') === 0;
+
             $rules = [
                 'harga_terbayar'     => 'nullable|numeric|min:0',
                 'status_bayar'       => 'required|string|in:Lunas,Belum Bayar,Transfer',
                 'catatan_penerimaan' => 'nullable|string',
+                'ttd_penerima'       => ($barang->ttd_penerima  ? 'sometimes' : 'required') . '|image|mimes:jpg,jpeg,png|max:2048',
+                'foto_penerima'      => ($barang->foto_penerima ? 'sometimes' : 'required') . '|image|mimes:jpg,jpeg,png|max:2048',
             ];
-            $rules['ttd_penerima']  = ($barang->ttd_penerima  ? 'sometimes' : 'required') . '|image|mimes:jpg,jpeg,png|max:2048';
-            $rules['foto_penerima'] = ($barang->foto_penerima ? 'sometimes' : 'required') . '|image|mimes:jpg,jpeg,png|max:2048';
-            $rules['bukti_transfer']       = 'nullable|image|mimes:jpg,jpeg,png|max:4096';
-            $rules['clear_bukti_transfer'] = 'nullable|boolean';
+
+            if (!$lockedTransfer) {
+                $rules['bukti_transfer']       = 'nullable|image|mimes:jpg,jpeg,png|max:4096';
+                $rules['clear_bukti_transfer'] = 'nullable|boolean';
+            }
 
             $validated = $request->validate($rules);
 
@@ -546,37 +551,17 @@ class BarangController extends Controller
                 $barang->foto_penerima = $fotoFilename;
             }
 
-            $barang->status_barang  = 'Diterima';
+            $barang->status_barang = 'Diterima';
             if (!$barang->tanggal_terima) {
                 $barang->tanggal_terima = now();
             }
-            $barang->harga_terbayar     = $validated['harga_terbayar'];
-            $barang->status_bayar       = $validated['status_bayar'];
-            $barang->catatan_penerimaan = $validated['catatan_penerimaan'] ?? $barang->catatan_penerimaan;
 
-            $effectiveStatus = $validated['status_bayar'];
-            $hasExistingBukti = !empty($barang->bukti_transfer);
-            $hasNewBukti      = $request->hasFile('bukti_transfer');
-            $clearBukti       = $request->boolean('clear_bukti_transfer');
+            if ($lockedTransfer) {
+                $barang->status_bayar   = 'Transfer';
+                $barang->harga_terbayar = $barang->harga_awal;
 
-            if ($effectiveStatus === 'Transfer') {
-                if (!$hasExistingBukti && !$hasNewBukti) {
-                    throw ValidationException::withMessages([
-                        'bukti_transfer' => 'Bukti transfer wajib diunggah saat status bayar "Transfer".',
-                    ]);
-                }
-                if ($clearBukti && !$hasNewBukti) {
-                    throw ValidationException::withMessages([
-                        'bukti_transfer' => 'Anda menghapus bukti lama. Unggah bukti transfer baru atau batalkan penghapusan.',
-                    ]);
-                }
-
-                if ($clearBukti && $hasExistingBukti) {
-                    Storage::disk('public')->delete('bukti_transfer/' . $barang->bukti_transfer);
-                    $barang->bukti_transfer = null;
-                }
-                if ($hasNewBukti) {
-                    if ($hasExistingBukti) {
+                if ($request->hasFile('bukti_transfer')) {
+                    if (!empty($barang->bukti_transfer)) {
                         Storage::disk('public')->delete('bukti_transfer/' . $barang->bukti_transfer);
                     }
                     $bt = $request->file('bukti_transfer');
@@ -585,14 +570,48 @@ class BarangController extends Controller
                     $barang->bukti_transfer = $btName;
                 }
             } else {
-                if ($hasExistingBukti) {
-                    Storage::disk('public')->delete('bukti_transfer/' . $barang->bukti_transfer);
-                    $barang->bukti_transfer = null;
+                $barang->harga_terbayar     = $validated['harga_terbayar'] ?? $barang->harga_terbayar;
+                $barang->status_bayar       = $validated['status_bayar'];
+                $clearBukti                 = $request->boolean('clear_bukti_transfer');
+                $hasExistingBukti           = !empty($barang->bukti_transfer);
+                $hasNewBukti                = $request->hasFile('bukti_transfer');
+
+                if (strcasecmp($validated['status_bayar'], 'Transfer') === 0) {
+                    if (!$hasExistingBukti && !$hasNewBukti) {
+                        throw ValidationException::withMessages([
+                            'bukti_transfer' => 'Bukti transfer wajib diunggah saat status bayar "Transfer".',
+                        ]);
+                    }
+                    if ($clearBukti && !$hasNewBukti) {
+                        throw ValidationException::withMessages([
+                            'bukti_transfer' => 'Anda menghapus bukti lama. Unggah bukti transfer baru atau batalkan penghapusan.',
+                        ]);
+                    }
+
+                    if ($clearBukti && $hasExistingBukti) {
+                        Storage::disk('public')->delete('bukti_transfer/' . $barang->bukti_transfer);
+                        $barang->bukti_transfer = null;
+                    }
+                    if ($hasNewBukti) {
+                        if ($hasExistingBukti) {
+                            Storage::disk('public')->delete('bukti_transfer/' . $barang->bukti_transfer);
+                        }
+                        $bt = $request->file('bukti_transfer');
+                        $btName = 'bukti_' . time() . '_' . uniqid() . '.' . $bt->getClientOriginalExtension();
+                        Storage::disk('public')->putFileAs('bukti_transfer', $bt, $btName);
+                        $barang->bukti_transfer = $btName;
+                    }
+                } else {
+                    if ($hasExistingBukti) {
+                        Storage::disk('public')->delete('bukti_transfer/' . $barang->bukti_transfer);
+                        $barang->bukti_transfer = null;
+                    }
                 }
             }
 
-            $barang->save();
+            $barang->catatan_penerimaan = $validated['catatan_penerimaan'] ?? $barang->catatan_penerimaan;
 
+            $barang->save();
             DB::commit();
 
             return response()->json([
