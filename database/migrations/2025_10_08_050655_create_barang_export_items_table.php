@@ -22,6 +22,9 @@ return new class extends Migration
             $t->string('deskripsi_barang')->nullable();
             $t->decimal('ongkos_kirim', 12, 2)->default(0);
             $t->string('status_bayar')->default('Belum Bayar');
+            $t->boolean('status_terima')->default(false);
+            $t->timestamp('diterima_at')->nullable();
+            $t->foreignId('penerima_user_id')->nullable()->constrained('users')->nullOnDelete();
 
             $t->timestamps();
             $t->unique(['export_id', 'barang_id']);
