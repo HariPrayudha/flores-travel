@@ -37,6 +37,9 @@ return new class extends Migration
             $table->string('status_barang')->default("Belum Diterima");
             $table->text('catatan_pengiriman')->nullable();
             $table->text('catatan_penerimaan')->nullable();
+            $table->boolean('exported_supir')->default(false);
+            $table->timestamp('exported_at_supir')->nullable();
+            $table->foreignId('last_export_id')->nullable()->constrained('barang_exports')->nullOnDelete();
             $table->timestamps();
         });
     }

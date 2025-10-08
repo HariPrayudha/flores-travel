@@ -3,6 +3,7 @@
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\BarangController;
+use App\Http\Controllers\BarangExportController;
 use App\Http\Controllers\KaraniController;
 use App\Http\Controllers\KotaController;
 use App\Http\Controllers\NotificationController;
@@ -46,5 +47,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::put('/barang/{id}/update-status', [BarangController::class, 'terimaBarang']);
     Route::put('/barang/{id}/batalkan', [BarangController::class, 'batalkan']);
-    Route::post('/barang/export-supir', [BarangController::class, 'exportSupir']);
+
+    Route::post('/supir-exports', [BarangExportController::class, 'store']);
+    Route::get('/supir-exports/{id}', [BarangExportController::class, 'show']);
 });
