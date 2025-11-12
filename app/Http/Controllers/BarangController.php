@@ -38,6 +38,47 @@ class BarangController extends Controller
         }
     }
 
+    private function makeUniqueCityPrefix(int $kotaId): string
+    {
+        $namaKota = Kota::where('id', $kotaId)->value('nama') ?? '';
+        $clean = strtoupper(preg_replace('/[^A-Z]/u', '', $namaKota));
+        if ($clean === '') return 'X';
+        $first = $clean[0];
+        $usedCityNames = Barang::query()
+            ->select('kotas.nama')
+            ->join('kotas', 'kotas.id', '=', 'barangs.kota_tujuan')
+            ->whereRaw('UPPER(REGEXP_REPLACE(kotas.nama, "[^A-Za-z]", "")) LIKE ?', [$first . '%'])
+            ->distinct()
+            ->pluck('nama')
+            ->map(fn($n) => strtoupper(preg_replace('/[^A-Z]/u', '', $n)))
+            ->filter();
+        $usedPrefixes = Barang::query()
+            ->where('kode_barang', 'like', $first . '-%')
+            ->selectRaw("SUBSTRING_INDEX(kode_barang, '-', 1) as pref")
+            ->distinct()
+            ->pluck('pref')
+            ->map(fn($p) => strtoupper($p))
+            ->filter();
+        $len = 1;
+        $max = strlen($clean);
+        while ($len <= $max) {
+            $cand = substr($clean, 0, $len);
+            if ($usedPrefixes->contains($cand)) {
+                $len++;
+                continue;
+            }
+            $conflictAtThisLen = $usedCityNames->contains(function ($nm) use ($cand, $clean) {
+                return $nm !== $clean && strpos($nm, $cand) === 0;
+            });
+            if ($conflictAtThisLen) {
+                $len++;
+                continue;
+            }
+            return $cand;
+        }
+        return $clean;
+    }
+
     public function store(Request $request)
     {
         try {
@@ -48,51 +89,39 @@ class BarangController extends Controller
 
             if (strtolower($user->role) === 'karani') {
                 if (!$user->kota_id) {
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'Akun tidak memiliki kota. Hubungi admin.'
-                    ], 422);
+                    return response()->json(['success' => false, 'message' => 'Akun tidak memiliki kota. Hubungi admin.'], 422);
                 }
-                $request->merge([
-                    'user_id'   => $user->id,
-                    'kota_asal' => $user->kota_id,
-                ]);
+                $request->merge(['user_id' => $user->id, 'kota_asal' => $user->kota_id]);
             } else {
-                if (!$request->filled('user_id')) {
-                    $request->merge(['user_id' => $user->id]);
-                }
+                if (!$request->filled('user_id')) $request->merge(['user_id' => $user->id]);
             }
 
             $validated = $request->validate([
-                'user_id'          => 'required|exists:users,id',
-                'kota_asal'        => 'required|exists:kotas,id',
-                'kota_tujuan'      => 'required|exists:kotas,id',
+                'user_id' => 'required|exists:users,id',
+                'kota_asal' => 'required|exists:kotas,id',
+                'kota_tujuan' => 'required|exists:kotas,id',
                 'deskripsi_barang' => 'required|string',
-                'nama_pengirim'    => 'required|string|max:255',
-                'hp_pengirim'      => 'nullable|string|max:20',
-                'nama_penerima'    => 'required|string|max:255',
-                'hp_penerima'      => 'required|string|max:20',
-                'harga_awal'       => 'required|numeric|min:0',
-                'status_bayar'     => 'required|string|in:Lunas,Belum Bayar,Transfer',
-                'status_barang'    => 'required|string|in:Diterima,Belum Diterima,Dibatalkan',
-                'foto_barang.*'    => 'sometimes|image|mimes:jpg,jpeg,png|max:4096',
-                'bukti_transfer'   => 'required_if:status_bayar,Transfer|image|mimes:jpg,jpeg,png|max:4096',
-                'paket_antar'      => 'sometimes|boolean',
-                'alamat'           => 'required_if:paket_antar,1|string',
+                'nama_pengirim' => 'required|string|max:255',
+                'hp_pengirim' => 'nullable|string|max:20',
+                'nama_penerima' => 'required|string|max:255',
+                'hp_penerima' => 'required|string|max:20',
+                'harga_awal' => 'required|numeric|min:0',
+                'status_bayar' => 'required|string|in:Lunas,Belum Bayar,Transfer',
+                'status_barang' => 'required|string|in:Diterima,Belum Diterima,Dibatalkan',
+                'foto_barang.*' => 'sometimes|image|mimes:jpg,jpeg,png|max:4096',
+                'bukti_transfer' => 'required_if:status_bayar,Transfer|image|mimes:jpg,jpeg,png|max:4096',
+                'paket_antar' => 'sometimes|boolean',
+                'alamat' => 'required_if:paket_antar,1|string',
                 'catatan_pengiriman' => 'nullable|string',
             ]);
 
             DB::beginTransaction();
 
-            $kotaTujuanFirstChar = Kota::where('id', $request->kota_tujuan)->value('nama');
-            $kotaTujuanFirstChar = $kotaTujuanFirstChar ? mb_substr($kotaTujuanFirstChar, 0, 1) : 'X';
-
+            $prefix = $this->makeUniqueCityPrefix((int)$validated['kota_tujuan']);
             $tanggalToday = date('dmy');
-
-            $lastResi = Barang::where('kode_barang', 'like', $kotaTujuanFirstChar . '-' . $tanggalToday . '-%')
+            $lastResi = Barang::where('kode_barang', 'like', $prefix . '-' . $tanggalToday . '-%')
                 ->orderBy('kode_barang', 'desc')
                 ->value('kode_barang');
-
             $nextNumber = 1;
             if ($lastResi) {
                 $parts = explode('-', $lastResi);
@@ -100,35 +129,31 @@ class BarangController extends Controller
                 $nextNumber = $lastNumber + 1;
             }
             $nextNumberFormatted = str_pad($nextNumber, 3, '0', STR_PAD_LEFT);
-            $resi = $kotaTujuanFirstChar . '-' . $tanggalToday . '-' . $nextNumberFormatted;
+            $resi = $prefix . '-' . $tanggalToday . '-' . $nextNumberFormatted;
 
             $barang = Barang::create([
-                'kode_barang'        => $resi,
-                'user_id'            => $validated['user_id'],
-                'kota_asal'          => $validated['kota_asal'],
-                'kota_tujuan'        => $validated['kota_tujuan'],
-                'deskripsi_barang'   => $validated['deskripsi_barang'],
-                'nama_pengirim'      => $validated['nama_pengirim'],
-                'hp_pengirim'        => $validated['hp_pengirim'] ?? null,
-                'nama_penerima'      => $validated['nama_penerima'],
-                'hp_penerima'        => $validated['hp_penerima'],
-                'harga_awal'         => $validated['harga_awal'],
-                'status_bayar'       => $validated['status_bayar'],
-                'status_barang'      => $validated['status_barang'],
+                'kode_barang' => $resi,
+                'user_id' => $validated['user_id'],
+                'kota_asal' => $validated['kota_asal'],
+                'kota_tujuan' => $validated['kota_tujuan'],
+                'deskripsi_barang' => $validated['deskripsi_barang'],
+                'nama_pengirim' => $validated['nama_pengirim'],
+                'hp_pengirim' => $validated['hp_pengirim'] ?? null,
+                'nama_penerima' => $validated['nama_penerima'],
+                'hp_penerima' => $validated['hp_penerima'],
+                'harga_awal' => $validated['harga_awal'],
+                'status_bayar' => $validated['status_bayar'],
+                'status_barang' => $validated['status_barang'],
                 'catatan_pengiriman' => $validated['catatan_pengiriman'] ?? null,
-                'paket_antar'        => $request->boolean('paket_antar'),
-                'alamat'             => $request->boolean('paket_antar') ? ($validated['alamat'] ?? null) : null,
+                'paket_antar' => $request->boolean('paket_antar'),
+                'alamat' => $request->boolean('paket_antar') ? ($validated['alamat'] ?? null) : null,
             ]);
 
             if ($request->hasFile('foto_barang')) {
                 foreach ($request->file('foto_barang') as $file) {
                     $filename = time() . '_' . uniqid() . '_' . $file->getClientOriginalName();
                     Storage::disk('public')->putFileAs('foto_barang', $file, $filename);
-
-                    FotoBarang::create([
-                        'barang_id' => $barang->id,
-                        'nama_file' => $filename,
-                    ]);
+                    FotoBarang::create(['barang_id' => $barang->id, 'nama_file' => $filename]);
                 }
             }
 
@@ -143,31 +168,18 @@ class BarangController extends Controller
             DB::commit();
 
             $barang->load('fotoBarang');
-            foreach ($barang->fotoBarang as $f) {
-                $f->url = Storage::url('foto_barang/' . $f->nama_file);
-            }
-            $barang->foto_penerima_url   = $barang->foto_penerima ? Storage::url('foto_barang/' . $barang->foto_penerima) : null;
-            $barang->ttd_penerima_url    = $barang->ttd_penerima ? Storage::url('foto_barang/' . $barang->ttd_penerima) : null;
-            $barang->bukti_transfer_url  = $barang->bukti_transfer ? Storage::url('bukti_transfer/' . $barang->bukti_transfer) : null;
+            foreach ($barang->fotoBarang as $f) $f->url = Storage::url('foto_barang/' . $f->nama_file);
+            $barang->foto_penerima_url = $barang->foto_penerima ? Storage::url('foto_barang/' . $barang->foto_penerima) : null;
+            $barang->ttd_penerima_url = $barang->ttd_penerima ? Storage::url('foto_barang/' . $barang->ttd_penerima) : null;
+            $barang->bukti_transfer_url = $barang->bukti_transfer ? Storage::url('bukti_transfer/' . $barang->bukti_transfer) : null;
 
-            return response()->json([
-                'success' => true,
-                'data'    => $barang,
-            ], 201);
+            return response()->json(['success' => true, 'data' => $barang], 201);
         } catch (ValidationException $e) {
             DB::rollBack();
-            return response()->json([
-                'success' => false,
-                'message' => $e->getMessage(),
-                'errors'  => $e->errors()
-            ], 422);
+            return response()->json(['success' => false, 'message' => $e->getMessage(), 'errors' => $e->errors()], 422);
         } catch (Exception $e) {
             DB::rollBack();
-            return response()->json([
-                'success' => false,
-                'message' => 'Failed to create barang',
-                'error'   => $e->getMessage()
-            ], 500);
+            return response()->json(['success' => false, 'message' => 'Failed to create barang', 'error' => $e->getMessage()], 500);
         }
     }
 
@@ -205,82 +217,60 @@ class BarangController extends Controller
     {
         try {
             $validated = $request->validate([
-                'kota_asal'            => 'nullable|exists:kotas,id',
-                'kota_tujuan'          => 'nullable|exists:kotas,id',
-                'deskripsi_barang'     => 'nullable|string',
-                'nama_pengirim'        => 'nullable|string|max:255',
-                'hp_pengirim'          => 'nullable|string|max:20',
-                'nama_penerima'        => 'nullable|string|max:255',
-                'hp_penerima'          => 'nullable|string|max:20',
-                'harga_awal'           => 'nullable|numeric|min:0',
-                'status_bayar'         => 'nullable|string|in:Lunas,Belum Bayar,Transfer',
-                'status_barang'        => 'nullable|string|in:Diterima,Belum Diterima,Dibatalkan',
-                'foto_barang.*'        => 'sometimes|image|mimes:jpg,jpeg,png|max:4096',
-                'foto_penerima'        => 'sometimes|image|mimes:jpg,jpeg,png|max:4096',
-                'ttd_penerima'         => 'sometimes|image|mimes:jpg,jpeg,png|max:4096',
-                'bukti_transfer'       => 'nullable|image|mimes:jpg,jpeg,png|max:4096',
-                'delete_foto_ids'      => ['nullable', 'array'],
-                'delete_foto_ids.*'    => ['integer', 'exists:foto_barangs,id'],
-                'clear_foto_penerima'  => 'nullable|boolean',
-                'clear_ttd_penerima'   => 'nullable|boolean',
+                'kota_asal' => 'nullable|exists:kotas,id',
+                'kota_tujuan' => 'nullable|exists:kotas,id',
+                'deskripsi_barang' => 'nullable|string',
+                'nama_pengirim' => 'nullable|string|max:255',
+                'hp_pengirim' => 'nullable|string|max:20',
+                'nama_penerima' => 'nullable|string|max:255',
+                'hp_penerima' => 'nullable|string|max:20',
+                'harga_awal' => 'nullable|numeric|min:0',
+                'status_bayar' => 'nullable|string|in:Lunas,Belum Bayar,Transfer',
+                'status_barang' => 'nullable|string|in:Diterima,Belum Diterima,Dibatalkan',
+                'foto_barang.*' => 'sometimes|image|mimes:jpg,jpeg,png|max:4096',
+                'foto_penerima' => 'sometimes|image|mimes:jpg,jpeg,png|max:4096',
+                'ttd_penerima' => 'sometimes|image|mimes:jpg,jpeg,png|max:4096',
+                'bukti_transfer' => 'nullable|image|mimes:jpg,jpeg,png|max:4096',
+                'delete_foto_ids' => ['nullable', 'array'],
+                'delete_foto_ids.*' => ['integer', 'exists:foto_barangs,id'],
+                'clear_foto_penerima' => 'nullable|boolean',
+                'clear_ttd_penerima' => 'nullable|boolean',
                 'clear_bukti_transfer' => 'nullable|boolean',
-                'paket_antar'          => 'sometimes|boolean',
-                'alamat'               => 'nullable|string',
-                'catatan_pengiriman'   => 'nullable|string',
+                'paket_antar' => 'sometimes|boolean',
+                'alamat' => 'nullable|string',
+                'catatan_pengiriman' => 'nullable|string',
             ]);
 
             DB::beginTransaction();
 
             $barang = Barang::with('fotoBarang')->lockForUpdate()->findOrFail($id);
 
-            $effectiveStatus = $request->has('status_bayar')
-                ? ($validated['status_bayar'] ?? null)
-                : $barang->status_bayar;
-
+            $effectiveStatus = $request->has('status_bayar') ? ($validated['status_bayar'] ?? null) : $barang->status_bayar;
             $hasExistingBukti = !empty($barang->bukti_transfer);
-            $hasNewBukti      = $request->hasFile('bukti_transfer');
-            $clearBukti       = $request->boolean('clear_bukti_transfer');
+            $hasNewBukti = $request->hasFile('bukti_transfer');
+            $clearBukti = $request->boolean('clear_bukti_transfer');
 
             if ($effectiveStatus === 'Transfer') {
-                if (!$hasExistingBukti && !$hasNewBukti) {
-                    throw ValidationException::withMessages([
-                        'bukti_transfer' => 'Bukti transfer wajib diunggah saat status bayar "Transfer".',
-                    ]);
-                }
-                if ($clearBukti && !$hasNewBukti) {
-                    throw ValidationException::withMessages([
-                        'bukti_transfer' => 'Anda menghapus bukti lama. Unggah bukti transfer baru atau batalkan penghapusan.',
-                    ]);
-                }
+                if (!$hasExistingBukti && !$hasNewBukti) throw ValidationException::withMessages(['bukti_transfer' => 'Bukti transfer wajib diunggah saat status bayar "Transfer".']);
+                if ($clearBukti && !$hasNewBukti) throw ValidationException::withMessages(['bukti_transfer' => 'Anda menghapus bukti lama. Unggah bukti transfer baru atau batalkan penghapusan.']);
             }
 
-            $paketAntarEff = $request->has('paket_antar')
-                ? $request->boolean('paket_antar')
-                : (bool) $barang->paket_antar;
-
-            if ($paketAntarEff && !$request->filled('alamat')) {
-                throw ValidationException::withMessages([
-                    'alamat' => 'Alamat wajib diisi saat paket antar diaktifkan.',
-                ]);
-            }
+            $paketAntarEff = $request->has('paket_antar') ? $request->boolean('paket_antar') : (bool) $barang->paket_antar;
+            if ($paketAntarEff && !$request->filled('alamat')) throw ValidationException::withMessages(['alamat' => 'Alamat wajib diisi saat paket antar diaktifkan.']);
 
             if ($request->has('kota_tujuan')) {
                 $kotaBaruId = $validated['kota_tujuan'] ?? null;
                 if (!is_null($kotaBaruId)) {
-                    $namaKotaBaru = Kota::where('id', $kotaBaruId)->value('nama');
-                    $prefixBaru = $namaKotaBaru ? mb_substr($namaKotaBaru, 0, 1) : 'X';
-
+                    $newPrefix = $this->makeUniqueCityPrefix((int)$kotaBaruId);
                     $parts = explode('-', (string) $barang->kode_barang, 3);
                     if (count($parts) === 3) {
                         [$oldPrefix, $oldTanggal, $oldNomor] = $parts;
-                        if ($prefixBaru !== $oldPrefix) {
+                        if ($newPrefix !== $oldPrefix) {
                             $num = (int) $oldNomor;
                             while (true) {
                                 $numStr = str_pad($num, 3, '0', STR_PAD_LEFT);
-                                $candidate = "{$prefixBaru}-{$oldTanggal}-{$numStr}";
-                                $exists = Barang::where('kode_barang', $candidate)
-                                    ->where('id', '!=', $barang->id)
-                                    ->exists();
+                                $candidate = "{$newPrefix}-{$oldTanggal}-{$numStr}";
+                                $exists = Barang::where('kode_barang', $candidate)->where('id', '!=', $barang->id)->exists();
                                 if (!$exists) {
                                     $barang->kode_barang = $candidate;
                                     break;
@@ -292,40 +282,20 @@ class BarangController extends Controller
                 }
             }
 
-            $updatable = [
-                'kota_asal',
-                'kota_tujuan',
-                'deskripsi_barang',
-                'nama_pengirim',
-                'hp_pengirim',
-                'nama_penerima',
-                'hp_penerima',
-                'harga_awal',
-                'status_bayar',
-                'status_barang',
-                'catatan_pengiriman',
-            ];
-            foreach ($updatable as $field) {
-                if ($request->has($field)) {
-                    $barang->{$field} = $validated[$field] ?? null;
-                }
-            }
+            $updatable = ['kota_asal', 'kota_tujuan', 'deskripsi_barang', 'nama_pengirim', 'hp_pengirim', 'nama_penerima', 'hp_penerima', 'harga_awal', 'status_bayar', 'status_barang', 'catatan_pengiriman'];
+            foreach ($updatable as $field) if ($request->has($field)) $barang->{$field} = $validated[$field] ?? null;
 
             if ($request->has('paket_antar')) {
                 $barang->paket_antar = $request->boolean('paket_antar');
                 $barang->alamat = $barang->paket_antar ? ($validated['alamat'] ?? $barang->alamat) : null;
-            } elseif ($request->has('alamat')) {
-                $barang->alamat = $validated['alamat'] ?? null;
-            }
+            } elseif ($request->has('alamat')) $barang->alamat = $validated['alamat'] ?? null;
 
             $barang->user_update = $request->user()?->id ?? $barang->user_update;
             $barang->save();
 
             $idsToDelete = $request->input('delete_foto_ids', []);
             if (!empty($idsToDelete)) {
-                $fotos = FotoBarang::where('barang_id', $barang->id)
-                    ->whereIn('id', $idsToDelete)
-                    ->get();
+                $fotos = FotoBarang::where('barang_id', $barang->id)->whereIn('id', $idsToDelete)->get();
                 foreach ($fotos as $f) {
                     Storage::disk('public')->delete('foto_barang/' . $f->nama_file);
                     $f->delete();
@@ -336,23 +306,16 @@ class BarangController extends Controller
                 foreach ($request->file('foto_barang') as $file) {
                     $filename = time() . '_' . uniqid() . '.' . $file->getClientOriginalExtension();
                     Storage::disk('public')->putFileAs('foto_barang', $file, $filename);
-                    FotoBarang::create([
-                        'barang_id' => $barang->id,
-                        'nama_file' => $filename,
-                    ]);
+                    FotoBarang::create(['barang_id' => $barang->id, 'nama_file' => $filename]);
                 }
             }
 
             if ($request->boolean('clear_foto_penerima')) {
-                if ($barang->foto_penerima) {
-                    Storage::disk('public')->delete('foto_barang/' . $barang->foto_penerima);
-                }
+                if ($barang->foto_penerima) Storage::disk('public')->delete('foto_barang/' . $barang->foto_penerima);
                 $barang->foto_penerima = null;
                 $barang->save();
             } elseif ($request->hasFile('foto_penerima')) {
-                if ($barang->foto_penerima) {
-                    Storage::disk('public')->delete('foto_barang/' . $barang->foto_penerima);
-                }
+                if ($barang->foto_penerima) Storage::disk('public')->delete('foto_barang/' . $barang->foto_penerima);
                 $fp = $request->file('foto_penerima');
                 $fpName = 'foto_' . time() . '_' . uniqid() . '.' . $fp->getClientOriginalExtension();
                 Storage::disk('public')->putFileAs('foto_barang', $fp, $fpName);
@@ -361,15 +324,11 @@ class BarangController extends Controller
             }
 
             if ($request->boolean('clear_ttd_penerima')) {
-                if ($barang->ttd_penerima) {
-                    Storage::disk('public')->delete('foto_barang/' . $barang->ttd_penerima);
-                }
+                if ($barang->ttd_penerima) Storage::disk('public')->delete('foto_barang/' . $barang->ttd_penerima);
                 $barang->ttd_penerima = null;
                 $barang->save();
             } elseif ($request->hasFile('ttd_penerima')) {
-                if ($barang->ttd_penerima) {
-                    Storage::disk('public')->delete('foto_barang/' . $barang->ttd_penerima);
-                }
+                if ($barang->ttd_penerima) Storage::disk('public')->delete('foto_barang/' . $barang->ttd_penerima);
                 $ttd = $request->file('ttd_penerima');
                 $ttdName = 'ttd_' . time() . '_' . uniqid() . '.' . $ttd->getClientOriginalExtension();
                 Storage::disk('public')->putFileAs('foto_barang', $ttd, $ttdName);
@@ -385,15 +344,11 @@ class BarangController extends Controller
                 }
             } else {
                 if ($request->boolean('clear_bukti_transfer')) {
-                    if ($barang->bukti_transfer) {
-                        Storage::disk('public')->delete('bukti_transfer/' . $barang->bukti_transfer);
-                    }
+                    if ($barang->bukti_transfer) Storage::disk('public')->delete('bukti_transfer/' . $barang->bukti_transfer);
                     $barang->bukti_transfer = null;
                     $barang->save();
                 } elseif ($request->hasFile('bukti_transfer')) {
-                    if ($barang->bukti_transfer) {
-                        Storage::disk('public')->delete('bukti_transfer/' . $barang->bukti_transfer);
-                    }
+                    if ($barang->bukti_transfer) Storage::disk('public')->delete('bukti_transfer/' . $barang->bukti_transfer);
                     $bt = $request->file('bukti_transfer');
                     $btName = 'bukti_' . time() . '_' . uniqid() . '.' . $bt->getClientOriginalExtension();
                     Storage::disk('public')->putFileAs('bukti_transfer', $bt, $btName);
@@ -405,32 +360,18 @@ class BarangController extends Controller
             DB::commit();
 
             $barang->load('fotoBarang');
-            foreach ($barang->fotoBarang as $f) {
-                $f->url = Storage::url('foto_barang/' . $f->nama_file);
-            }
-            $barang->foto_penerima_url  = $barang->foto_penerima ? Storage::url('foto_barang/' . $barang->foto_penerima) : null;
-            $barang->ttd_penerima_url   = $barang->ttd_penerima ? Storage::url('foto_barang/' . $barang->ttd_penerima) : null;
+            foreach ($barang->fotoBarang as $f) $f->url = Storage::url('foto_barang/' . $f->nama_file);
+            $barang->foto_penerima_url = $barang->foto_penerima ? Storage::url('foto_barang/' . $barang->foto_penerima) : null;
+            $barang->ttd_penerima_url = $barang->ttd_penerima ? Storage::url('foto_barang/' . $barang->ttd_penerima) : null;
             $barang->bukti_transfer_url = $barang->bukti_transfer ? Storage::url('bukti_transfer/' . $barang->bukti_transfer) : null;
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Data berhasil diupdate.',
-                'data'    => $barang,
-            ], 200);
+            return response()->json(['success' => true, 'message' => 'Data berhasil diupdate.', 'data' => $barang], 200);
         } catch (ValidationException $e) {
             DB::rollBack();
-            return response()->json([
-                'success' => false,
-                'message' => 'Validasi gagal.',
-                'errors'  => $e->errors()
-            ], 422);
+            return response()->json(['success' => false, 'message' => 'Validasi gagal.', 'errors' => $e->errors()], 422);
         } catch (Exception $e) {
             DB::rollBack();
-            return response()->json([
-                'success' => false,
-                'message' => 'Gagal mengupdate data.',
-                'error'   => $e->getMessage()
-            ], 500);
+            return response()->json(['success' => false, 'message' => 'Gagal mengupdate data.', 'error' => $e->getMessage()], 500);
         }
     }
 
