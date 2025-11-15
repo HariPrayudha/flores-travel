@@ -41,7 +41,7 @@ class BarangController extends Controller
     private function makeUniqueCityPrefix(int $kotaId): string
     {
         $namaKota = Kota::where('id', $kotaId)->value('nama') ?? '';
-        $clean = strtoupper(preg_replace('/[^A-Z]/u', '', $namaKota));
+        $clean = strtoupper(preg_replace('/[^A-Za-z]/u', '', $namaKota));
         if ($clean === '') return 'X';
         $first = $clean[0];
         $usedCityNames = Barang::query()
@@ -50,7 +50,7 @@ class BarangController extends Controller
             ->whereRaw('UPPER(REGEXP_REPLACE(kotas.nama, "[^A-Za-z]", "")) LIKE ?', [$first . '%'])
             ->distinct()
             ->pluck('nama')
-            ->map(fn($n) => strtoupper(preg_replace('/[^A-Z]/u', '', $n)))
+            ->map(fn($n) => strtoupper(preg_replace('/[^A-Za-z]/u', '', $n)))
             ->filter();
         $usedPrefixes = Barang::query()
             ->where('kode_barang', 'like', $first . '-%')
