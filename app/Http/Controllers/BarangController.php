@@ -38,42 +38,35 @@ class BarangController extends Controller
         }
     }
 
+    private function normalizeName(string $s): string
+    {
+        return strtoupper(preg_replace('/[^A-Za-z]/u', '', $s));
+    }
+
     private function makeUniqueCityPrefix(int $kotaId): string
     {
         $namaKota = Kota::where('id', $kotaId)->value('nama') ?? '';
-        $clean = strtoupper(preg_replace('/[^A-Za-z]/u', '', $namaKota));
+        $clean = $this->normalizeName($namaKota);
         if ($clean === '') return 'X';
         $first = $clean[0];
-        $usedCityNames = Barang::query()
-            ->select('kotas.nama')
-            ->join('kotas', 'kotas.id', '=', 'barangs.kota_tujuan')
-            ->whereRaw('UPPER(REGEXP_REPLACE(kotas.nama, "[^A-Za-z]", "")) LIKE ?', [$first . '%'])
-            ->distinct()
+        $all = Kota::query()
             ->pluck('nama')
-            ->map(fn($n) => strtoupper(preg_replace('/[^A-Za-z]/u', '', $n)))
-            ->filter();
-        $usedPrefixes = Barang::query()
-            ->where('kode_barang', 'like', $first . '-%')
-            ->selectRaw("SUBSTRING_INDEX(kode_barang, '-', 1) as pref")
-            ->distinct()
-            ->pluck('pref')
-            ->map(fn($p) => strtoupper($p))
-            ->filter();
-        $len = 1;
+            ->map(fn($n) => $this->normalizeName((string) $n))
+            ->filter()
+            ->unique()
+            ->values();
+        $siblings = $all->filter(fn($nm) => isset($nm[0]) && $nm[0] === $first)->values();
         $max = strlen($clean);
-        while ($len <= $max) {
+        for ($len = 1; $len <= $max; $len++) {
             $cand = substr($clean, 0, $len);
-            if ($usedPrefixes->contains($cand)) {
-                $len++;
-                continue;
-            }
-            $conflictAtThisLen = $usedCityNames->contains(function ($nm) use ($cand, $clean) {
-                return $nm !== $clean && strpos($nm, $cand) === 0;
-            });
-            if ($conflictAtThisLen) {
-                $len++;
-                continue;
-            }
+            $hasNameConflict = $siblings->contains(fn($nm) => $nm !== $clean && strpos($nm, $cand) === 0);
+            if ($hasNameConflict) continue;
+            $usedByOtherCity = Barang::query()
+                ->join('kotas', 'kotas.id', '=', 'barangs.kota_tujuan')
+                ->whereRaw('SUBSTRING_INDEX(kode_barang, "-", 1) = ?', [$cand])
+                ->where('kotas.id', '!=', $kotaId)
+                ->exists();
+            if ($usedByOtherCity) continue;
             return $cand;
         }
         return $clean;
