@@ -9,6 +9,7 @@ use App\Http\Controllers\KaraniController;
 use App\Http\Controllers\KotaController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\RequestUpdateBarangController;
+use App\Http\Controllers\SupirController;
 
 Route::post('/login', [AuthController::class, 'login'])->name('login');
 
@@ -33,6 +34,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::middleware('can:isAdmin')->group(function () {
         Route::apiResource('/karani', KaraniController::class);
         Route::post('karani/{id}/reset-password', [KaraniController::class, 'resetPassword']);
+        Route::apiResource('/supir', SupirController::class);
+        Route::post('supir/{id}/reset-password', [SupirController::class, 'resetPassword']);
         Route::apiResource('/kota', KotaController::class);
 
         Route::post('/update-barang/{id}/approve', [RequestUpdateBarangController::class, 'approve']);
