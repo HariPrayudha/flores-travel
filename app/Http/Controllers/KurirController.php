@@ -10,23 +10,23 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Validation\Rule;
 
-class SupirController extends Controller
+class KurirController extends Controller
 {
     public function index()
     {
         try {
-            $supirs = User::with('kota:id,nama')
-                ->where('role', 'supir')
+            $kurirs = User::with('kota:id,nama')
+                ->where('role', 'kurir')
                 ->get();
 
             return response()->json([
                 'success' => true,
-                'data' => $supirs
+                'data' => $kurirs
             ]);
         } catch (Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to fetch supir list'
+                'message' => 'Failed to fetch kurir list'
             ], 500);
         }
     }
@@ -43,19 +43,19 @@ class SupirController extends Controller
 
             $passwordPlain = $validated['password'] ?? $validated['username'];
 
-            $supir = User::create([
+            $kurir = User::create([
                 'name'     => $validated['name'],
                 'username' => $validated['username'],
                 'password' => Hash::make($passwordPlain),
-                'role'     => 'supir',
+                'role'     => 'kurir',
                 'kota_id'  => $validated['kota_id'] ?? null
             ]);
 
-            $supir->load('kota:id,nama');
+            $kurir->load('kota:id,nama');
 
             return response()->json([
                 'success' => true,
-                'data'    => $supir
+                'data'    => $kurir
             ], 201);
         } catch (ValidationException $e) {
             return response()->json([
@@ -66,7 +66,7 @@ class SupirController extends Controller
         } catch (Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to create supir',
+                'message' => 'Failed to create kurir',
                 'error'   => $e->getMessage(),
             ], 500);
         }
@@ -75,23 +75,23 @@ class SupirController extends Controller
     public function show($id)
     {
         try {
-            $supir = User::with('kota:id,nama')
-                ->where('role', 'supir')
+            $kurir = User::with('kota:id,nama')
+                ->where('role', 'kurir')
                 ->findOrFail($id);
 
             return response()->json([
                 'success' => true,
-                'data'    => $supir
+                'data'    => $kurir
             ]);
         } catch (ModelNotFoundException $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Supir not found'
+                'message' => 'Kurir not found'
             ], 404);
         } catch (Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to fetch supir'
+                'message' => 'Failed to fetch kurir'
             ], 500);
         }
     }
@@ -110,28 +110,28 @@ class SupirController extends Controller
                 'kota_id'   => 'nullable|exists:kotas,id',
             ]);
 
-            $supir = User::where('role', 'supir')->findOrFail($id);
+            $kurir = User::where('role', 'kurir')->findOrFail($id);
 
-            $supir->name = $validated['name'];
-            $supir->username = $validated['username'];
-            $supir->kota_id = $validated['kota_id'] ?? null;
+            $kurir->name = $validated['name'];
+            $kurir->username = $validated['username'];
+            $kurir->kota_id = $validated['kota_id'] ?? null;
 
             if (!empty($validated['password'])) {
-                $supir->password = Hash::make($validated['password']);
+                $kurir->password = Hash::make($validated['password']);
             }
 
-            $supir->save();
+            $kurir->save();
 
-            $supir->load('kota:id,nama');
+            $kurir->load('kota:id,nama');
 
             return response()->json([
                 'success' => true,
-                'data'    => $supir
+                'data'    => $kurir
             ]);
         } catch (ModelNotFoundException $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Supir not found',
+                'message' => 'Kurir not found',
             ], 404);
         } catch (ValidationException $e) {
             return response()->json([
@@ -142,7 +142,7 @@ class SupirController extends Controller
         } catch (Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to update supir',
+                'message' => 'Failed to update kurir',
                 'errors'  => $e->getMessage(),
             ], 500);
         }
@@ -151,22 +151,22 @@ class SupirController extends Controller
     public function destroy($id)
     {
         try {
-            $supir = User::where('role', 'supir')->findOrFail($id);
-            $supir->delete();
+            $kurir = User::where('role', 'kurir')->findOrFail($id);
+            $kurir->delete();
 
             return response()->json([
                 'success' => true,
-                'message' => 'Supir deleted'
+                'message' => 'Kurir deleted'
             ]);
         } catch (ModelNotFoundException $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Supir not found',
+                'message' => 'Kurir not found',
             ], 404);
         } catch (Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to delete supir'
+                'message' => 'Failed to delete kurir'
             ], 500);
         }
     }
@@ -174,22 +174,22 @@ class SupirController extends Controller
     public function resetPassword($id)
     {
         try {
-            $supir = User::where('role', 'supir')->findOrFail($id);
+            $kurir = User::where('role', 'kurir')->findOrFail($id);
 
-            $supir->password = Hash::make($supir->username);
-            $supir->save();
+            $kurir->password = Hash::make($kurir->username);
+            $kurir->save();
 
-            $supir->load('kota:id,nama');
+            $kurir->load('kota:id,nama');
 
             return response()->json([
                 'success' => true,
                 'message' => 'Password has been reset to username.',
-                'data'    => $supir,
+                'data'    => $kurir,
             ]);
         } catch (ModelNotFoundException $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Supir not found',
+                'message' => 'Kurir not found',
             ], 404);
         } catch (Exception $e) {
             return response()->json([
