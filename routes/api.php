@@ -7,6 +7,7 @@ use App\Http\Controllers\BarangExportController;
 use App\Http\Controllers\ExportPenerimaanController;
 use App\Http\Controllers\KaraniController;
 use App\Http\Controllers\KotaController;
+use App\Http\Controllers\KurirController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\RequestUpdateBarangController;
 use App\Http\Controllers\SupirController;
@@ -34,8 +35,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::middleware('can:isAdmin')->group(function () {
         Route::apiResource('/karani', KaraniController::class);
         Route::post('karani/{id}/reset-password', [KaraniController::class, 'resetPassword']);
-        Route::apiResource('/supir', SupirController::class);
-        Route::post('supir/{id}/reset-password', [SupirController::class, 'resetPassword']);
+        Route::apiResource('/kurir', KurirController::class);
+        Route::post('kurir/{id}/reset-password', [KurirController::class, 'resetPassword']);
         Route::apiResource('/kota', KotaController::class);
 
         Route::post('/update-barang/{id}/approve', [RequestUpdateBarangController::class, 'approve']);
