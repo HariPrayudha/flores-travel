@@ -2,32 +2,39 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\Request;
-
 class StorageLinkController extends Controller
 {
     public function link()
     {
-        $target = storage_path('app/public');
-        $link = public_path('storage');
+        $source = storage_path('app/public');
+        $destination = public_path('storage');
 
-        // Jika sudah ada folder storage di public_html, hapus dulu
-        if (file_exists($link)) {
-            return "Storage link sudah ada (public/storage sudah tersedia).";
+        // Jika folder public/storage belum ada, buat
+        if (!file_exists($destination)) {
+            mkdir($destination, 0775, true);
         }
 
-        // Coba buat symlink
-        try {
-            symlink($target, $link);
-        } catch (\Exception $e) {
-            return "Gagal membuat symlink: " . $e->getMessage();
+        // Copy seluruh isi folder storage/app/public ke public/storage
+        $this->copyDirectory($source, $destination);
+
+        return "Storage folder berhasil dicopy ke public/storage (fallback mode).";
+    }
+
+    private function copyDirectory($source, $destination)
+    {
+        $dir = opendir($source);
+        @mkdir($destination);
+
+        while (false !== ($file = readdir($dir))) {
+            if ($file != '.' && $file != '..') {
+                if (is_dir($source . '/' . $file)) {
+                    $this->copyDirectory($source . '/' . $file, $destination . '/' . $file);
+                } else {
+                    copy($source . '/' . $file, $destination . '/' . $file);
+                }
+            }
         }
 
-        // Verifikasi apakah symlink berhasil
-        if (is_link($link)) {
-            return "Storage link berhasil dibuat! 🎉<br>Path: $link";
-        }
-
-        return "Symlink gagal dibuat (mungkin fungsi symlink diblokir server).";
+        closedir($dir);
     }
 }
